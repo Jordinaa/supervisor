@@ -49,7 +49,8 @@ def position_cb(msg):
     qw = msg.pose.orientation.w
 
     roll, pitch, global_yaw = euler_from_quaternion(qx ,qy, qz, qw)
-    print("roll", np.rad2deg(roll))
+    # print("roll", np.rad2deg(roll))
+    # print("pitch", np.rad2deg(pitch))
 
 def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
     """
@@ -78,7 +79,6 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
                          thrust=0.5, body_roll_rate=0.0, body_pitch_rate=0.0):
 
     #https://github.com/mavlink/mavros/issues/1356
-
     attitude_msg = AttitudeTarget()
     attitude_msg.type_mask = AttitudeTarget.IGNORE_PITCH_RATE| AttitudeTarget.IGNORE_ROLL_RATE| AttitudeTarget.IGNORE_YAW_RATE#4#4#0b00000000 
     attitude_msg.header = Header()
@@ -90,7 +90,10 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
 
     r,p,y = euler_from_quaternion(quaternion[1], quaternion[2], quaternion[3], quaternion[0])
 
-    print("roll command is", np.rad2deg(r))
+    # print("roll command is", np.rad2deg(r))
+    print("pitch command is", np.rad2deg(p))
+
+
     attitude_msg.orientation.x = quaternion[1]
     attitude_msg.orientation.y = quaternion[2]
     attitude_msg.orientation.z = quaternion[3]
@@ -108,8 +111,8 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
 
 if __name__ == "__main__":
 
-    rollCommand =  -45
-
+    rollCommand = 0
+    pitchCommand = 45
     rospy.init_node("offb_node_py")
 
     # subscribes to mavros/state, state 
@@ -118,9 +121,10 @@ if __name__ == "__main__":
     # publishing to the mavros/setpoint_position/local topic, the messae type is State, size of outgoing message
     local_pos_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
 
-    attitude_pos_pub = rospy.Publisher("mavros/setpoint_raw/attitude",
-         AttitudeTarget, queue_size=1)
+    attitude_pos_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
     
+    attitude_pos_pitch_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
+
     position_sub = rospy.Subscriber('mavros/local_position/pose', PoseStamped, callback=position_cb)
 
     rospy.wait_for_service("/mavros/cmd/arming")
@@ -137,7 +141,7 @@ if __name__ == "__main__":
         rate.sleep()
 
     pose = PoseStamped()
-    [qw,qx,qy,qz] = to_quaternion(roll=rollCommand, pitch=0, yaw=0)
+    [qw,qx,qy,qz] = to_quaternion(roll=rollCommand, pitch=pitchCommand, yaw=0)
     pose.pose.position.x = 0
     pose.pose.position.y = 0
     pose.pose.position.z = 50
@@ -150,9 +154,13 @@ if __name__ == "__main__":
     for i in range(100):   
         if(rospy.is_shutdown()):
             break
-        attitude_msg = send_attitude_target(roll_angle=rollCommand)
+        # roll send and publish
+        attitude_roll = send_attitude_target(roll_angle=rollCommand)
+        attitude_pos_pub.publish(attitude_roll)
+        # pitch send and pubish
+        attitude_pitch = send_attitude_target(pitch_angle=pitchCommand)
+        attitude_pos_pitch_pub.publish(attitude_pitch)
 
-        attitude_pos_pub.publish(attitude_msg)
         # local_pos_pub.publish(pose)
         rate.sleep()
 
@@ -168,19 +176,24 @@ if __name__ == "__main__":
         if(current_state.mode != "OFFBOARD" and (rospy.Time.now() - last_req) > rospy.Duration(5.0)):
             if(set_mode_client.call(offb_set_mode).mode_sent == True):
                 rospy.loginfo("OFFBOARD enabled")
-            
+        
             last_req = rospy.Time.now()
         else:
             if(not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0)):
                 if(arming_client.call(arm_cmd).success == True):
                     rospy.loginfo("Vehicle armed")
-            
+        
                 last_req = rospy.Time.now()
+
 
         if current_state.mode == "OFFBOARD":
             # print("sending attittude")
             attitude_msg = send_attitude_target(roll_angle=rollCommand)
             attitude_pos_pub.publish(attitude_msg)
+
+            attitude_pitch_msg = send_attitude_target(pitch_angle=pitchCommand)
+            attitude_pos_pub.publish(attitude_pitch)
+            
         else:
             local_pos_pub.publish(pose)
 
