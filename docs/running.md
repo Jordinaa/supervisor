@@ -19,3 +19,14 @@ make px4_sitl_default gazebo_plane
 '''
 rosrun offboard_py offb_node.py 
 '''
+
+
+## running scripts
+In px4 terminal
+'''
+commander takeoff
+'''
+run script
+'''
+rosrun offboard_py offb_node.py 
+'''

@@ -3,6 +3,7 @@
  * File: offb_node.py
  * Stack and tested in Gazebo 9 SITL
 """
+# original working code with working roll
 
 import rospy
 from geometry_msgs.msg import PoseStamped
