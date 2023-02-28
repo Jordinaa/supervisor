@@ -55,12 +55,10 @@ def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
 
     return [w, x, y, z]
 
-
 # takes input for attitude and returns an attitude target message that publishes
 # to setpoint_raw/attitude topic
 # creates an attitude target message sets type mask to ignore rpy and yaw rates
 # sets frame id to base_footprint and sets the header stamp to current time
-
 # calculates current yaw using global yaw and conver
 def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
                           yaw_rate=0.0, use_yaw_rate=False,
@@ -79,7 +77,7 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
     r,p,y = euler_from_quaternion(quaternion[1], quaternion[2], quaternion[3], quaternion[0])
 
     # print("roll command is", np.rad2deg(r))
-    print("pitch command is", np.rad2deg(p))
+    # print("pitch command is", np.rad2deg(p))
 
 
     attitude_msg.orientation.x = quaternion[1]
@@ -95,8 +93,6 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
     # print(attitude_msg)
 
     return attitude_msg
-
-
 
 # callback functions that get called when the drones state or position changes
 # they update the current state and global yaw angle variables 
@@ -128,7 +124,7 @@ if __name__ == "__main__":
 
     # publishing to the mavros/setpoint_position/local topic, the messae type is State, size of outgoing message
     local_pos_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
-    position_sub = rospy.Subscriber('mavros/local_position/pose', PoseStamped, callback=position_cb)
+    position_sub = rospy.Subscriber("mavros/local_position/pose", PoseStamped, callback=position_cb)
 
     attitude_pos_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
     

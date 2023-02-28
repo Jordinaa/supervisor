@@ -4,6 +4,8 @@
  * Stack and tested in Gazebo 9 SITL
 """
 
+# this has the data log it is not pretty
+
 import math 
 import csv
 import os
@@ -157,9 +159,11 @@ if __name__ == "__main__":
     rospy.init_node("offb_node_py")
     # subscribes to mavros/state, state 
     state_sub = rospy.Subscriber("mavros/state", State, callback = state_cb)
+    
     # publishing to the mavros/setpoint_position/local topic, the messae type is State, size of outgoing message
     local_pos_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
     position_sub = rospy.Subscriber('mavros/local_position/pose', PoseStamped, callback=position_cb)
+
     attitude_pos_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
     attitude_pos_pitch_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
 

@@ -1,24 +1,13 @@
 # Starting RPY command scripts
 
 ## QGC
-'''
-./QGroundControl.AppImage
-'''
-
 ## MAVROS
-'''
-roslaunch mavros px4.launch
-'''
-
 ## PX4 and SITL
-'''
+## Running Scripts
+./QGroundControl.AppImage
+roslaunch mavros px4.launch
 make px4_sitl_default gazebo_plane
-'''
-
-# Running Scripts
-'''
-rosrun offboard_py offb_node.py 
-'''
+rosrun offboard_py offb_node.py
 
 
 ## running scripts
@@ -30,3 +19,15 @@ run script
 '''
 rosrun offboard_py offb_node.py 
 '''
+
+## tmux setup for fourpanes and directories
+
+'''
+tmux new -s commandcenter
+alt+b %
+alt+b "
+alt+b left arrow
+alt+b %
+'''
+
+
