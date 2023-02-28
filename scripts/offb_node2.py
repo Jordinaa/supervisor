@@ -191,7 +191,7 @@ if __name__ == "__main__":
 
 
         if current_state.mode == "OFFBOARD":
-            # print("sending attittude")
+            print("sending attittude")
             attitude_msg = send_attitude_target(roll_angle=rollCommand)
             attitude_pos_pub.publish(attitude_msg)
 

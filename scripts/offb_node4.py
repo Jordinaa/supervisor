@@ -3,7 +3,7 @@
  * File: offb_node.py
  * Stack and tested in Gazebo 9 SITL
 """
-
+from xmlrpc.client import Boolean
 import math 
 import time 
 import csv
@@ -57,29 +57,40 @@ def quaternionToEuler(x:float, y:float, z:float, w:float) -> tuple:
 
 
 class FlightEnvelopeSupervisor():
-     """
-     this class will supervise the drone 
-     will also control it
-     """
-     def __init__(self):
-        self.x = None
-        self.y = None
-        self.z = None
+    """
+    this class will supervise the drone 
+    will also control it
+    """
+    def __init__(self, x, y, z, roll = 0.0, pitch = 0.0, yaw = 0.0):
+        self.x = x
+        self.y = y
+        self.z = z
 
-        self.roll = None
-        self.pitch = None
-        self.yaw = None
+        self.roll = roll
+        self.pitch = pitch
+        self.yaw = yaw 
         self.coords = [None, None, None]
 
         self.local_position_topic = "mavros/setpoint_position/local"
         self.attitude_position_roll_topic = "mavros/setpoint_raw/attitude"
         self.attitude_position_pitch_topic = "mavros/setpoint_raw/attitude"
-
         self.local_position_pub = rospy.Publisher(self.local_position_topic, PoseStamped, queue_size = 10)
         self.attitude_position_roll_pub = rospy.Publisher(self.attitude_position_roll_topic, AttitudeTarget, queue_size = 1)
         self.attitude_position_pitch_pub = rospy.Publisher(self.attitude_position_pitch_topic, AttitudeTarget, queue_size = 1)
 
-        self.arm
+        # fix this mess #######################################
+        pose = PoseStamped()
+        [self.qx, self.qy, self.qz, self.qw] = eulerToQuaternion(self.roll, self.pitch, yaw = 0.0)
+        pose.pose.position.x = self.x
+        pose.pose.position.y = self.y
+        pose.pose.position.z = self.z
+        pose.pose.orientation.x = self.qx
+        pose.pose.orientation.y = self.qy
+        pose.pose.orientation.z = self.qz
+        pose.pose.orientation.w = self.qw
+
+
+
 
 class InformationNode():
     """
@@ -110,11 +121,9 @@ class InformationNode():
 # class DataLogging():
 
 
-
 if __name__ == "__main__":
 
     rospy.init_node("offb_node_py")
-
     current_state = State()
     pose = PoseStamped()
 
@@ -124,11 +133,44 @@ if __name__ == "__main__":
     infoNode.position_sub
 
     # publishers
+    supervisor = FlightEnvelopeSupervisor(0, 0, 50, 0, 0)
+    supervisor.local_position_pub
+    supervisor.attitude_position_roll_pub
+    supervisor.attitude_position_pitch_pub
+    
+    # services
+    rospy.wait_for_service("/mavros/cmd/arming")
+    arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)    
+    rospy.wait_for_service("/mavros/set_mode")
+    setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
+    
 
+    # fix this #######################################
+    offb_set_mode = SetModeRequest()
+    offb_set_mode.custom_mode = 'OFFBOARD'
+    arm_cmd = CommandBoolRequest()
+    arm_cmd.value = True
 
     rate = rospy.Rate(20)
+
+    last_req = rospy.Time.now()
     
     while not rospy.is_shutdown():
+        if(current_state.mode != "OFFBOARD" and (rospy.Time.now() - last_req) > rospy.Duration(5.0)):
+            if(setMode.call(offb_set_mode).mode_sent == True):
+                rospy.loginfo("OFFBOARD enabled")
+            last_req = rospy.Time.now()
+
+        else:
+            if(not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0)):
+                if(arm.call(arm_cmd).success == True):
+                    rospy.loginfo("Vehicle armed")
+                last_req = rospy.Time.now()
+
+        if current_state.mode == "OFFBOARD":
+            print('WORKING')
+
+
 
         rate.sleep()
     
