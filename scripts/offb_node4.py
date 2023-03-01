@@ -78,8 +78,9 @@ class FlightEnvelopeSupervisor():
         self.attitude_position_roll_pub = rospy.Publisher(self.attitude_position_roll_topic, AttitudeTarget, queue_size = 1)
         self.attitude_position_pitch_pub = rospy.Publisher(self.attitude_position_pitch_topic, AttitudeTarget, queue_size = 1)
 
-        # fix this mess #######################################
+    def set_pose(self):
         pose = PoseStamped()
+
         [self.qx, self.qy, self.qz, self.qw] = eulerToQuaternion(self.roll, self.pitch, yaw = 0.0)
         pose.pose.position.x = self.x
         pose.pose.position.y = self.y
@@ -89,8 +90,8 @@ class FlightEnvelopeSupervisor():
         pose.pose.orientation.z = self.qz
         pose.pose.orientation.w = self.qw
 
-
-
+        # Publish pose to local position topic
+        self.local_position_pub.publish(pose)
 
 class InformationNode():
     """
@@ -101,9 +102,9 @@ class InformationNode():
         self.roll = None
         self.pitch = None
         self.yaw = None
+        self.current_state = State()
         self.state_topic = "mavros/state"
         self.local_position_topic = "mavros/local_position/pose"
-        # self.current_state = None
         self.state_sub = rospy.Subscriber(self.state_topic, State, callback = self.state_cb)
         self.position_sub = rospy.Subscriber(self.local_position_topic, PoseStamped, callback = self.position_cb)
 
@@ -124,6 +125,8 @@ class InformationNode():
 if __name__ == "__main__":
 
     rospy.init_node("offb_node_py")
+    print("starting")
+
     current_state = State()
     pose = PoseStamped()
 
@@ -144,7 +147,6 @@ if __name__ == "__main__":
     rospy.wait_for_service("/mavros/set_mode")
     setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
     
-
     # fix this #######################################
     offb_set_mode = SetModeRequest()
     offb_set_mode.custom_mode = 'OFFBOARD'
@@ -156,21 +158,21 @@ if __name__ == "__main__":
     last_req = rospy.Time.now()
     
     while not rospy.is_shutdown():
+
+        current_state = infoNode.current_state  # update current_state
         if(current_state.mode != "OFFBOARD" and (rospy.Time.now() - last_req) > rospy.Duration(5.0)):
-            if(setMode.call(offb_set_mode).mode_sent == True):
+            if(setMode(offb_set_mode).mode_sent == True):
                 rospy.loginfo("OFFBOARD enabled")
             last_req = rospy.Time.now()
 
         else:
             if(not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0)):
-                if(arm.call(arm_cmd).success == True):
+                if(arm(arm_cmd).success == True):
                     rospy.loginfo("Vehicle armed")
                 last_req = rospy.Time.now()
 
         if current_state.mode == "OFFBOARD":
             print('WORKING')
-
-
+            supervisor.set_pose()
 
         rate.sleep()
-    

@@ -74,11 +74,10 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
     yaw_angle = global_yaw
     quaternion = to_quaternion(roll_angle, pitch_angle, yaw_angle)
 
-    r,p,y = euler_from_quaternion(quaternion[1], quaternion[2], quaternion[3], quaternion[0])
+    # r,p,y = euler_from_quaternion(quaternion[1], quaternion[2], quaternion[3], quaternion[0])
 
     # print("roll command is", np.rad2deg(r))
     # print("pitch command is", np.rad2deg(p))
-
 
     attitude_msg.orientation.x = quaternion[1]
     attitude_msg.orientation.y = quaternion[2]
@@ -114,7 +113,6 @@ def position_cb(msg):
 
 
 if __name__ == "__main__":
-
     rollCommand = 0
     pitchCommand = 0
     rospy.init_node("offb_node_py")
@@ -142,6 +140,7 @@ if __name__ == "__main__":
 
     # Wait for Flight Controller connection
     while(not rospy.is_shutdown() and not current_state.connected):
+        print('hm')
         rate.sleep()
 
     pose = PoseStamped()
