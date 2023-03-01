@@ -96,7 +96,7 @@ class FlightEnvelopeSupervisor():
         attitude.header.frame_id = "base_footprint"
         attitude.header.stamp = rospy.Time.now()
         quaternion = eulerToQuaternion(roll, pitch, yaw)
-        print(roll)
+        # print(roll)
         attitude.thrust = 0.5
         attitude.orientation.x = quaternion[0]
         attitude.orientation.y = quaternion[1]
@@ -138,6 +138,8 @@ class FlightEnvelopeSupervisor():
 
     def run(self, rate, rollcmd, pitchcmd):
         # Main loop to supervise and control the drone
+
+        # DONE = False
         rate = rate
         last_req = rospy.Time.now()
         while not rospy.is_shutdown():
@@ -161,11 +163,16 @@ class FlightEnvelopeSupervisor():
                 # set attitude
                 if self.out_of_roll_bounds(self.info_node.roll) == True:
                     while np.rad2deg(self.info_node.roll) > 1: #and np.rad2deg(self.info_node.roll) < -1:
-                        self.set_attitude()                        
+                        self.set_attitude()  
+                        self.data_logger.log_data()                     
                         rate.sleep()
-
+                        # DONE = True
                 else:
                     self.set_attitude(rollcmd, pitchcmd)
+                    # if DONE == True:
+                        # self.set_attitude()  
+                    # else:
+                        # self.set_attitude(rollcmd, pitchcmd)
                 # rospy.loginfo("beep boop")
                 self.data_logger.log_data()
 
