@@ -9,8 +9,7 @@ import csv
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from xmlrpc.client import Boolean
+from matplotlib.animation import FuncAnimation
 from PyQt5 import QtWidgets, QtCore
 
 import rospy
@@ -87,8 +86,7 @@ class FlightEnvelopeSupervisor():
         self.info_node = InformationNode()
         # Initialize the information node
         self.info_node.init()
-        # Set initial position and orientation of the drone
-
+        self.data_logger = DataLogger(self.info_node, self)
 
     def set_attitude(self):
         # Set the attitude of the drone by changing the roll angle
@@ -152,18 +150,20 @@ class FlightEnvelopeSupervisor():
                 # set attitude
                 self.set_attitude()
                 rospy.loginfo("rolling and pitching")
-
+                self.data_logger.log_data()
+                
             last_req = rospy.Time.now()
             rate.sleep()
 
 class DataLogger():
     """
-    Logs and plots data from the InformationNode and FlightEnvelopeSupervisor
+    Logs data from the InformationNode and FlightEnvelopeSupervisor to a CSV file
     """
     def __init__(self, info_node, supervisor):
         self.info_node = info_node
         self.supervisor = supervisor
 
+        self.time_data = []
         self.roll_data = []
         self.pitch_data = []
         self.yaw_data = []
@@ -171,63 +171,25 @@ class DataLogger():
         self.y_data = []
         self.z_data = []
 
-        self.fig, self.axs = plt.subplots(2, 3, figsize=(12, 8))
-        self.fig.suptitle("Drone Data Logger")
-
-        # Initialize the subplots
-        self.axs[0, 0].set_title("Roll")
-        self.axs[0, 0].set_xlabel("Time (s)")
-        self.axs[0, 0].set_ylabel("Roll (deg)")
-
-        self.axs[0, 1].set_title("Pitch")
-        self.axs[0, 1].set_xlabel("Time (s)")
-        self.axs[0, 1].set_ylabel("Pitch (deg)")
-
-        self.axs[0, 2].set_title("Yaw")
-        self.axs[0, 2].set_xlabel("Time (s)")
-        self.axs[0, 2].set_ylabel("Yaw (deg)")
-
-        self.axs[1, 0].set_title("X Position")
-        self.axs[1, 0].set_xlabel("Time (s)")
-        self.axs[1, 0].set_ylabel("X Position (m)")
-
-        self.axs[1, 1].set_title("Y Position")
-        self.axs[1, 1].set_xlabel("Time (s)")
-        self.axs[1, 1].set_ylabel("Y Position (m)")
-
-        self.axs[1, 2].set_title("Z Position")
-        self.axs[1, 2].set_xlabel("Time (s)")
-        self.axs[1, 2].set_ylabel("Z Position (m)")
-
-        # Initialize the plot lines
-        self.roll_line, = self.axs[0, 0].plot([], [], 'b-')
-        self.pitch_line, = self.axs[0, 1].plot([], [], 'b-')
-        self.yaw_line, = self.axs[0, 2].plot([], [], 'b-')
-        self.x_line, = self.axs[1, 0].plot([], [], 'b-')
-        self.y_line, = self.axs[1, 1].plot([], [], 'b-')
-        self.z_line, = self.axs[1, 2].plot([], [], 'b-')
-
-        # Set the axes limits
-        self.axs[0, 0].set_ylim(-180, 180)
-        self.axs[0, 1].set_ylim(-180, 180)
-        self.axs[0, 2].set_ylim(-180, 180)
-        self.axs[1, 0].set_ylim(-50, 50)
-        self.axs[1, 1].set_ylim(-50, 50)
-        self.axs[1, 2].set_ylim(0, 100)
-
-        # Initialize the time
         self.start_time = time.time()
 
-    def update(self):
-        # Log the latest data
-        self.log_data()
+        # Open the CSV file for writing
+        self.csv_file = open("drone_data.csv", "w", newline="")
+        self.csv_writer = csv.writer(self.csv_file)
+        self.csv_writer.writerow(["time", "roll", "pitch", "yaw"])
 
-        # Update the live plots
-        for i in range(len(self.plots)):
-            self.plots[i].setData(self.data[:, 0], self.data[:, i+1])
-        
-        # Update the GUI
-        QtWidgets.QApplication.processEvents()
+    def log_data(self):
+        self.time_data.append(time.time() - self.start_time)
+        self.roll_data.append(self.info_node.roll)
+        self.pitch_data.append(self.info_node.pitch)
+        self.yaw_data.append(self.info_node.yaw)
+
+        # Write the roll, pitch, and yaw data to the CSV file
+        self.csv_writer.writerow([self.time_data[-1], self.roll_data[-1], self.pitch_data[-1], self.yaw_data[-1]])
+
+    def __del__(self):
+        # Close the CSV file when the object is destroyed
+        self.csv_file.close()
 
 class InformationNode():
     """
@@ -277,4 +239,6 @@ if __name__ == "__main__":
     supervisor.set_mode("OFFBOARD")
     supervisor.arm_drone()
     supervisor.set_attitude()
+    data_logger = DataLogger(supervisor.info_node, supervisor)
     supervisor.run(rate)
+
