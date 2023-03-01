@@ -59,14 +59,15 @@ def quaternionToEuler(x:float, y:float, z:float, w:float) -> tuple:
      
         return roll_x, pitch_y, yaw_z # in radians
 
+
 class FlightEnvelopeSupervisor():
     """
     This class will supervise and control the drone
     """
-    def __init__(self, x, y, z, roll=0.0, pitch=0.0, yaw=0.0):
-        self.x = x
-        self.y = y
-        self.z = z
+    def __init__(self, roll, pitch, yaw=0.0):
+        self.x = None
+        self.y = None
+        self.z = None
         self.roll = roll
         self.pitch = pitch
         self.yaw = yaw
@@ -74,11 +75,10 @@ class FlightEnvelopeSupervisor():
         [self.qx, self.qy, self.qz, self.qw] = eulerToQuaternion(self.roll, self.pitch, self.yaw)
 
         self.local_position_topic = "mavros/setpoint_position/local"
-        self.attitude_position_roll_topic = "mavros/setpoint_raw/attitude"
+        self.attitude_position_topic = "mavros/setpoint_raw/attitude"
         self.attitude_position_pitch_topic = "mavros/setpoint_raw/attitude"
         self.local_position_pub = rospy.Publisher(self.local_position_topic, PoseStamped, queue_size=10)
-        self.attitude_position_roll_pub = rospy.Publisher(self.attitude_position_roll_topic, AttitudeTarget, queue_size=1)
-        self.attitude_position_pitch_pub = rospy.Publisher(self.attitude_position_pitch_topic, AttitudeTarget, queue_size=1)
+        self.attitude_position_pub = rospy.Publisher(self.attitude_position_topic, AttitudeTarget, queue_size=1)
 
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
         self.setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
@@ -88,21 +88,12 @@ class FlightEnvelopeSupervisor():
         # Initialize the information node
         self.info_node.init()
         # Set initial position and orientation of the drone
-        pose = PoseStamped()
-        
-        pose.pose.position.x = self.x
-        pose.pose.position.y = self.y
-        pose.pose.position.z = self.z
-        pose.pose.orientation.x = self.qx
-        pose.pose.orientation.y = self.qy
-        pose.pose.orientation.z = self.qz
-        pose.pose.orientation.w = self.qw
-        self.local_position_pub.publish(pose)
 
-    def set_attitude_roll(self, roll):
+
+    def set_attitude(self):
         # Set the attitude of the drone by changing the roll angle
         attitude = AttitudeTarget()
-        attitude.type_mask = AttitudeTarget.IGNORE_PITCH_RATE | AttitudeTarget.IGNORE_ROLL_RATE | AttitudeTarget.IGNORE_YAW_RATE#4#4#0b00000000 
+        attitude.type_mask = AttitudeTarget.IGNORE_PITCH_RATE | AttitudeTarget.IGNORE_ROLL_RATE | AttitudeTarget.IGNORE_YAW_RATE
         attitude.header = Header()
         attitude.header.frame_id = "base_footprint"
         attitude.header.stamp = rospy.Time.now()
@@ -112,32 +103,13 @@ class FlightEnvelopeSupervisor():
         attitude.orientation.y = self.qy
         attitude.orientation.z = self.qz # change
         attitude.orientation.w = self.qw # change
+        self.attitude_position_pub.publish(attitude)
 
-        self.attitude_position_roll_pub.publish(attitude)
-
-
-    # def set_attitude_pitch(self, pitch):
-    #     # Set the attitude of the drone by changing the pitch angle
-    #     attitude = AttitudeTarget()
-    #     attitude.type_mask = AttitudeTarget.IGNORE_PITCH_RATE | AttitudeTarget.IGNORE_ROLL_RATE | AttitudeTarget.IGNORE_YAW_RATE#4#4#0b00000000 
-    #     # attitude.body_rate.x = 0.0
-    #     # attitude.body_rate.y = 0.0
-    #     # attitude.body_rate.z = 0.0
-    #     attitude.thrust = 0.5
-    #     attitude.orientation.x = 0.0
-    #     attitude.orientation.y = self.qy #change
-    #     attitude.orientation.z = 0.0
-    #     attitude.orientation.w = self.qw # change
-    #     self.attitude_position_pitch_pub.publish(attitude)
-
-    def pre_bake_waypoints(self, rate, rollcomm):
+    def pre_bake_commanders(self, rate, rollcomm, pitchcomm):
         for i in range(100):   
             if(rospy.is_shutdown()):
                 break
-            # roll send and publish
-            self.set_attitude_roll(roll=rollcomm)
-            # pitch send and pubish
-            # local_pos_pub.publish(pose)
+            self.set_attitude()
             rate.sleep()
 
     def set_mode(self, mode):
@@ -166,29 +138,21 @@ class FlightEnvelopeSupervisor():
             # self.info_node.update()
             current_state = self.info_node.current_state
 
-            # current_state = rospy.wait_for_message("mavros/state", State)
             if current_state.mode != "OFFBOARD" and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
                 # Set the drone to OFFBOARD mode
-                print("case 1")
                 self.set_mode("OFFBOARD")
                 last_req = rospy.Time.now()
 
-            # if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-            #     print("case 2")
-            #     # Arm the drone
-            #     self.arm_drone()
-            #     last_req = rospy.Time.now()
+            if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
+                # Arm the drone
+                self.arm_drone()
+                last_req = rospy.Time.now()
     
             if current_state.mode == "OFFBOARD":
-                print("case 3")
-                # Set the attitude of the drone
-                self.set_attitude_roll(self.roll)
-                # self.set_attitude_pitch(self.pitch)
+                # set attitude
+                self.set_attitude()
                 rospy.loginfo("rolling and pitching")
 
-            # if (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-            #     last_req = rospy.Time.now()
-            print("hello world")
             last_req = rospy.Time.now()
             rate.sleep()
 
@@ -303,21 +267,14 @@ if __name__ == "__main__":
     parser.add_argument("pitch", type=float, help="Desired pitch angle in degrees")
     args = parser.parse_args()
 
-
     # Initialize ROS node
     rospy.init_node("offb_node_py")
     rate = rospy.Rate(20)
+
     # Create instance of FlightEnvelopeSupervisor class
-    supervisor = FlightEnvelopeSupervisor(0, 0, 50, 0, 0)
-    # Arm the drone
-    supervisor.pre_bake_waypoints(rate, 0)
+    supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch)
+    supervisor.pre_bake_commanders(rate, args.roll, args.pitch)
     supervisor.set_mode("OFFBOARD")
     supervisor.arm_drone()
-    # Set drone to OFFBOARD mode
-    # Set the attitude of the drone based on input arguments
-    # print(f' main function roll {args.roll}')
-    # print(f' main function pitch {args.pitch}')
-    supervisor.set_attitude_roll(args.roll)
-    # supervisor.set_attitude_pitch(args.pitch)
-    # Run the main loop
+    supervisor.set_attitude()
     supervisor.run(rate)
