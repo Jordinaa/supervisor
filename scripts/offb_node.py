@@ -88,26 +88,27 @@ class FlightEnvelopeSupervisor():
         self.info_node.init()
         self.data_logger = DataLogger(self.info_node, self)
 
-    def set_attitude(self):
+    def set_attitude(self, roll=0.0, pitch=0.0, yaw=0.0):
         # Set the attitude of the drone by changing the roll angle
         attitude = AttitudeTarget()
         attitude.type_mask = AttitudeTarget.IGNORE_PITCH_RATE | AttitudeTarget.IGNORE_ROLL_RATE | AttitudeTarget.IGNORE_YAW_RATE
         attitude.header = Header()
         attitude.header.frame_id = "base_footprint"
         attitude.header.stamp = rospy.Time.now()
-
+        quaternion = eulerToQuaternion(roll, pitch, yaw)
+        print(roll)
         attitude.thrust = 0.5
-        attitude.orientation.x = self.qx
-        attitude.orientation.y = self.qy
-        attitude.orientation.z = self.qz # change
-        attitude.orientation.w = self.qw # change
+        attitude.orientation.x = quaternion[0]
+        attitude.orientation.y = quaternion[1]
+        attitude.orientation.z = quaternion[2]
+        attitude.orientation.w = quaternion[3]
         self.attitude_position_pub.publish(attitude)
 
     def pre_bake_commanders(self, rate, rollcomm, pitchcomm):
         for i in range(100):   
             if(rospy.is_shutdown()):
                 break
-            self.set_attitude()
+            self.set_attitude(rollcomm, pitchcomm)
             rate.sleep()
 
     def set_mode(self, mode):
@@ -126,7 +127,16 @@ class FlightEnvelopeSupervisor():
         if self.arm.call(arm_cmd).success == True:
             rospy.loginfo("Vehicle armed")
 
-    def run(self, rate):
+    def out_of_roll_bounds(self, roll):
+        maxRoll = 50
+        # roll is in degrees
+        if np.rad2deg(roll) > maxRoll or np.rad2deg(roll) < -maxRoll:
+            # rospy.log
+            print('out of bounds')
+            return True
+        return False
+
+    def run(self, rate, rollcmd, pitchcmd):
         # Main loop to supervise and control the drone
         rate = rate
         last_req = rospy.Time.now()
@@ -146,12 +156,22 @@ class FlightEnvelopeSupervisor():
                 self.arm_drone()
                 last_req = rospy.Time.now()
     
+    
             if current_state.mode == "OFFBOARD":
                 # set attitude
-                self.set_attitude()
-                rospy.loginfo("rolling and pitching")
+                if self.out_of_roll_bounds(self.info_node.roll) == True:
+                    while np.rad2deg(self.info_node.roll) > 1: #and np.rad2deg(self.info_node.roll) < -1:
+                        self.set_attitude()                        
+                        rate.sleep()
+
+                else:
+                    self.set_attitude(rollcmd, pitchcmd)
+                # rospy.loginfo("beep boop")
                 self.data_logger.log_data()
-                
+
+
+
+
             last_req = rospy.Time.now()
             rate.sleep()
 
@@ -160,6 +180,7 @@ class DataLogger():
     Logs data from the InformationNode and FlightEnvelopeSupervisor to a CSV file
     """
     def __init__(self, info_node, supervisor):
+
         self.info_node = info_node
         self.supervisor = supervisor
 
@@ -167,14 +188,11 @@ class DataLogger():
         self.roll_data = []
         self.pitch_data = []
         self.yaw_data = []
-        self.x_data = []
-        self.y_data = []
-        self.z_data = []
 
         self.start_time = time.time()
 
         # Open the CSV file for writing
-        self.csv_file = open("drone_data.csv", "w", newline="")
+        self.csv_file = open("/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv", "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "roll", "pitch", "yaw"])
 
@@ -190,6 +208,8 @@ class DataLogger():
     def __del__(self):
         # Close the CSV file when the object is destroyed
         self.csv_file.close()
+    
+
 
 class InformationNode():
     """
@@ -238,7 +258,7 @@ if __name__ == "__main__":
     supervisor.pre_bake_commanders(rate, args.roll, args.pitch)
     supervisor.set_mode("OFFBOARD")
     supervisor.arm_drone()
-    supervisor.set_attitude()
+    supervisor.set_attitude(args.roll, args.pitch)
     data_logger = DataLogger(supervisor.info_node, supervisor)
-    supervisor.run(rate)
+    supervisor.run(rate, args.roll, args.pitch)
 
