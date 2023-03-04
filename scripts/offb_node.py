@@ -3,8 +3,8 @@
  * File: offb_node.py
  * Stack and tested in Gazebo 9 SITL
 """
-import math 
 import time 
+import math 
 import csv
 import argparse
 import numpy as np
@@ -176,9 +176,6 @@ class FlightEnvelopeSupervisor():
                 # rospy.loginfo("beep boop")
                 self.data_logger.log_data()
 
-
-
-
             last_req = rospy.Time.now()
             rate.sleep()
 
@@ -216,8 +213,6 @@ class DataLogger():
         # Close the CSV file when the object is destroyed
         self.csv_file.close()
     
-
-
 class InformationNode():
     """
     This class creates subscribers to local position and state,
