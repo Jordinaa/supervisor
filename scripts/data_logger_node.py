@@ -22,13 +22,16 @@ class DataLogger():
         self.pitch_data = []
         self.yaw_data = []
         self.start_time = time.time()
+        self.roll = None
+        self.pitch = None
+        self.yaw = None
 
         # csv file
         self.csv_file = open("/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv", "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "roll", "pitch", "yaw"])
 
-    def dataLogger_cb(self, msg: PoseStamped):
+    def rpy_cb(self, msg: PoseStamped):
         qx = msg.pose.orientation.x
         qy = msg.pose.orientation.y
         qz = msg.pose.orientation.z
@@ -40,16 +43,16 @@ class DataLogger():
         pitch = np.rad2deg(pitch)
         yaw = np.rad2deg(yaw)
 
-        # logs info 
-        rospy.loginfo(str(roll) + ", " + str(pitch) + ", " + str(yaw))
-
-    def log_data(self, roll, pitch, yaw):
+        self.roll = roll
+        self.pitch = pitch
+        self.yaw = yaw
         self.time_data.append(time.time() - self.start_time)
-        self.roll_data.append(roll)
-        self.pitch_data.append(pitch)
-        self.yaw_data.append(yaw)
-        # Write the roll, pitch, and yaw data to the CSV file
+        self.roll_data.append(self.roll)
+        self.pitch_data.append(self.pitch)
+        self.yaw_data.append(self.yaw)
         self.csv_writer.writerow([self.time_data[-1], self.roll_data[-1], self.pitch_data[-1], self.yaw_data[-1]])
+
+        rospy.loginfo(str(roll) + str(pitch) + str(yaw))
 
     def __del__(self):
         # Close the CSV file when the object is destroyed
@@ -59,12 +62,12 @@ class DataLogger():
 if __name__ == '__main__':
     # initialize data logger node 
     rospy.init_node('data_logger_node')
+    rospy.loginfo('data logger node started')
 
     # inits datalogger class
     datalogger = DataLogger()
 
     # what the data is logging to terminal this is the roll pitch yaw 
-    sub = rospy.Subscriber("mavros/local_position/pose", PoseStamped, callback=datalogger.dataLogger_cb)
-
-    rospy.loginfo('data logger node started')
+    sub = rospy.Subscriber("mavros/local_position/pose", PoseStamped, callback=datalogger.rpy_cb)
+    datalogger.__del__
     rospy.spin()
