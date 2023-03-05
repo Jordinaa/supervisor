@@ -86,7 +86,6 @@ class FlightEnvelopeSupervisor():
         self.info_node = InformationNode()
         # Initialize the information node
         self.info_node.init()
-        self.data_logger = DataLogger(self.info_node, self)
 
     def set_attitude(self, roll=0.0, pitch=0.0, yaw=0.0):
         # Set the attitude of the drone by changing the roll angle
@@ -164,7 +163,6 @@ class FlightEnvelopeSupervisor():
                 if self.out_of_roll_bounds(self.info_node.roll) == True:
                     while np.rad2deg(self.info_node.roll) > 1: #and np.rad2deg(self.info_node.roll) < -1:
                         self.set_attitude()  
-                        self.data_logger.log_data()                     
                         rate.sleep()
                         # DONE = True
                 else:
@@ -174,45 +172,9 @@ class FlightEnvelopeSupervisor():
                     # else:
                         # self.set_attitude(rollcmd, pitchcmd)
                 # rospy.loginfo("beep boop")
-                self.data_logger.log_data()
-
             last_req = rospy.Time.now()
             rate.sleep()
 
-class DataLogger():
-    """
-    Logs data from the InformationNode and FlightEnvelopeSupervisor to a CSV file
-    """
-    def __init__(self, info_node, supervisor):
-
-        self.info_node = info_node
-        self.supervisor = supervisor
-
-        self.time_data = []
-        self.roll_data = []
-        self.pitch_data = []
-        self.yaw_data = []
-
-        self.start_time = time.time()
-
-        # Open the CSV file for writing
-        self.csv_file = open("/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv", "w", newline="")
-        self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(["time", "roll", "pitch", "yaw"])
-
-    def log_data(self):
-        self.time_data.append(time.time() - self.start_time)
-        self.roll_data.append(self.info_node.roll)
-        self.pitch_data.append(self.info_node.pitch)
-        self.yaw_data.append(self.info_node.yaw)
-
-        # Write the roll, pitch, and yaw data to the CSV file
-        self.csv_writer.writerow([self.time_data[-1], self.roll_data[-1], self.pitch_data[-1], self.yaw_data[-1]])
-
-    def __del__(self):
-        # Close the CSV file when the object is destroyed
-        self.csv_file.close()
-    
 class InformationNode():
     """
     This class creates subscribers to local position and state,
@@ -261,6 +223,5 @@ if __name__ == "__main__":
     supervisor.set_mode("OFFBOARD")
     supervisor.arm_drone()
     supervisor.set_attitude(args.roll, args.pitch)
-    data_logger = DataLogger(supervisor.info_node, supervisor)
     supervisor.run(rate, args.roll, args.pitch)
 
