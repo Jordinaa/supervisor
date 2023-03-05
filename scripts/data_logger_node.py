@@ -4,10 +4,7 @@ import math
 import time 
 import csv
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 import rospy
-from mavros_msgs.msg import State, AttitudeTarget
 from geometry_msgs.msg import PoseStamped
 
 
