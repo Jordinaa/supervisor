@@ -33,7 +33,7 @@ class FlightEnvelopeSupervisor():
 
         self.local_position_topic = "mavros/setpoint_position/local"
         self.attitude_position_topic = "mavros/setpoint_raw/attitude"
-        self.attitude_position_pitch_topic = "mavros/setpoint_raw/attitude"
+        
         self.local_position_pub = rospy.Publisher(self.local_position_topic, PoseStamped, queue_size=10)
         self.attitude_position_pub = rospy.Publisher(self.attitude_position_topic, AttitudeTarget, queue_size=1)
 
@@ -133,6 +133,7 @@ class FlightEnvelopeSupervisor():
             last_req = rospy.Time.now()
             rate.sleep()
 
+
 class InformationNode():
     """
     This class creates subscribers to local position and state,
@@ -160,9 +161,6 @@ class InformationNode():
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
         # print('position call back func')
 
-    # def update(self):
-    #         rospy.loginfo(f"Current roll: {self.roll}, pitch: {self.pitch}, yaw: {self.yaw}")
-
 
 if __name__ == "__main__":
 
@@ -172,11 +170,9 @@ if __name__ == "__main__":
     parser.add_argument("pitch", type=float, help="Desired pitch angle in degrees")
     args = parser.parse_args()
 
-
     # Initialize ROS node
     rospy.init_node("offb_node_py")
     rate = rospy.Rate(20)
-
 
     # Create instance of FlightEnvelopeSupervisor class
     supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch)
@@ -186,4 +182,3 @@ if __name__ == "__main__":
     supervisor.set_attitude(args.roll, args.pitch)
     supervisor.run(rate, args.roll, args.pitch)
 
-    

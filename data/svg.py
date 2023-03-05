@@ -7,6 +7,7 @@ def plot_data_from_csv(filename):
     roll_data = []
     pitch_data = []
     yaw_data = []
+    
     with open(filename, "r") as f:
         csv_reader = csv.reader(f)
         next(csv_reader) # skip the header row
