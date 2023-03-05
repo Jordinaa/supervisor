@@ -5,18 +5,16 @@
 """
 # helper files and datalogger function 
 from helper_functions import quaternionToEuler, eulerToQuaternion
+from data_logger_node import DataLogger
 
-import math 
 import argparse
 import numpy as np
 
 import rospy
-
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State, AttitudeTarget
 from mavros_msgs.srv import CommandBool, CommandBoolRequest, SetMode, SetModeRequest
 from std_msgs.msg import Header
-
 
 
 class FlightEnvelopeSupervisor():
@@ -148,7 +146,7 @@ class InformationNode():
         self.local_position_topic = "mavros/local_position/pose"
         self.state_sub = rospy.Subscriber(self.state_topic, State, callback=self.state_cb)
         self.position_sub = rospy.Subscriber(self.local_position_topic, PoseStamped, callback=self.position_cb)
-        print("InformationNode initialized")
+        print("infonode initialized")
 
     def state_cb(self, msg):
         self.current_state = msg
@@ -167,15 +165,18 @@ class InformationNode():
 
 
 if __name__ == "__main__":
+
     # Parse command line arguments for roll and pitch
     parser = argparse.ArgumentParser()
     parser.add_argument("roll", type=float, help="Desired roll angle in degrees")
     parser.add_argument("pitch", type=float, help="Desired pitch angle in degrees")
     args = parser.parse_args()
 
+
     # Initialize ROS node
     rospy.init_node("offb_node_py")
     rate = rospy.Rate(20)
+
 
     # Create instance of FlightEnvelopeSupervisor class
     supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch)
@@ -185,3 +186,4 @@ if __name__ == "__main__":
     supervisor.set_attitude(args.roll, args.pitch)
     supervisor.run(rate, args.roll, args.pitch)
 
+    
