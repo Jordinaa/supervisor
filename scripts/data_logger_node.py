@@ -62,15 +62,15 @@ class DataLogger():
         df = pd.read_csv(self.csv_path)
 
         # Extract x and y data
-        x = df['time']
+        t = df['time']
         y1 = df['roll']
         y2 = df['pitch']
         y3 = df['yaw']
 
         # Plot data using Matplotlib
-        plt.plot(x, y1, label='Roll')
-        plt.plot(x, y2, label='Pitch')
-        plt.plot(x, y3, label='Yaw')
+        plt.plot(t, y1, label='Roll')
+        plt.plot(t, y2, label='Pitch')
+        plt.plot(t, y3, label='Yaw')
         plt.legend()
         plt.title('Roll Pitch Yaw')
         plt.xlabel('Time')
