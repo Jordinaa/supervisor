@@ -2,7 +2,6 @@
 
 from helper_functions import eulerToQuaternion, quaternionToEuler
 
-import math
 import time 
 import csv
 import numpy as np
@@ -10,9 +9,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import rospy
 from geometry_msgs.msg import PoseStamped
-
-
-# callback function that prints out what you are recieving  
 
 class DataLogger():
     """
@@ -33,6 +29,8 @@ class DataLogger():
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "roll", "pitch", "yaw"])
+
+        self.last_timestamp = 0
 
     def rpy_cb(self, msg: PoseStamped):
         qx = msg.pose.orientation.x
@@ -60,7 +58,6 @@ class DataLogger():
 
     def plot_csv(self):
         df = pd.read_csv(self.csv_path)
-
         # Extract x and y data
         t = df['time']
         y1 = df['roll']
@@ -81,21 +78,11 @@ class DataLogger():
         # Close the CSV file when the object is destroyed
         self.csv_file.close()
 
-    # def plot_data(self):
-
-
-
-if __name__ == '__main__':
-    # initialize data logger node 
+if __name__ == '__main__': 
     rospy.init_node('data_logger_node')
     rospy.loginfo('data logger node started')
-
-    # inits datalogger class
     datalogger = DataLogger()
-
-    # what the data is logging to terminal this is the roll pitch yaw 
     sub = rospy.Subscriber("mavros/local_position/pose", PoseStamped, callback=datalogger.rpy_cb)
-
     rospy.spin()
     datalogger.__del__()
     datalogger.plot_csv()
