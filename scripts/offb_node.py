@@ -64,7 +64,6 @@ class FlightEnvelopeSupervisor():
             attitude.orientation.y = 0.0
             attitude.orientation.z = 0.0
             attitude.orientation.w = 0.0
-            self.attitude_position_pub.publish(attitude)
 
         else: 
             quaternion = eulerToQuaternion(self.roll, self.pitch, self.yaw)
@@ -73,7 +72,8 @@ class FlightEnvelopeSupervisor():
             attitude.orientation.y = quaternion[1]
             attitude.orientation.z = quaternion[2]
             attitude.orientation.w = quaternion[3]
-            self.attitude_position_pub.publish(attitude)
+
+        self.attitude_position_pub.publish(attitude)
         
     def pre_bake_commanders(self):
         for i in range(100):   
@@ -85,13 +85,27 @@ class FlightEnvelopeSupervisor():
             rospy.loginfo('prebake commands')
         self.flag = True
 
+    # def set_mode(self):
+    #     # Set the flight mode of the drone
+    #     offb_set_mode = SetModeRequest()
+    #     offb_set_mode.custom_mode = self.mode
+
+    #     if self.setMode.call(offb_set_mode).mode_sent == True:
+    #         rospy.loginfo(f"{self.mode} mode enabled")
+
     def set_mode(self):
         # Set the flight mode of the drone
         offb_set_mode = SetModeRequest()
         offb_set_mode.custom_mode = self.mode
 
-        if self.setMode.call(offb_set_mode).mode_sent == True:
+        try:
+            rospy.wait_for_service('mavros/set_mode', timeout=5)
+            set_mode = rospy.ServiceProxy('mavros/set_mode', SetMode)
+            set_mode(offb_set_mode)
             rospy.loginfo(f"{self.mode} mode enabled")
+        except rospy.ServiceException as e:
+            rospy.logwarn(f"Service call failed: {e}")
+
 
     def arm_drone(self):
         # Arm the drone
@@ -100,11 +114,15 @@ class FlightEnvelopeSupervisor():
         if self.arm.call(arm_cmd).success == True:
             rospy.loginfo("Vehicle armed")
 
+    # def out_of_roll_bounds(self):
+    #     if np.rad2deg(self.info_node.roll) > self.maxRoll or np.rad2deg(self.info_node.roll) < -self.maxRoll:
+    #         rospy.logwarn('Out of bounds')
+    #         return True
+    #     return False
+
     def out_of_roll_bounds(self):
-        if np.rad2deg(self.info_node.roll) > self.maxRoll or np.rad2deg(self.info_node.roll) < -self.maxRoll:
-            rospy.logwarn('Out of bounds')
-            return True
-        return False
+        roll_deg = np.rad2deg(self.info_node.roll)
+        return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
 
     def run(self):
         last_req = rospy.Time.now()
