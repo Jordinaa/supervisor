@@ -42,33 +42,31 @@ class Visualiser:
         self.roll_list = []
         self.pitch_list = []
         self.yaw_list = []
+
+        self.repeat_length = 50
         
-        self.repeat_length = 10
-        
-        sub1 = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
+        subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
 
         self.ax.legend()
 
     def plot_init(self):
         self.ax.set_xlim(left=0, right=self.repeat_length)
         self.ax.set_ylim([-180, 180])
+
         return self.lines
 
     def position_cb(self, msg):
-        time = rospy.get_time() - time_zero
         qx = msg.pose.orientation.x
         qy = msg.pose.orientation.y
         qz = msg.pose.orientation.z
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
         
-        # convert from rads to degrees
         self.roll = np.rad2deg(self.roll)
         self.pitch = np.rad2deg(self.pitch)
         self.yaw = np.rad2deg(self.yaw)
         
         time_index = len(self.time)
-
         self.time.append(time_index+1)
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
@@ -79,14 +77,13 @@ class Visualiser:
         else:
             self.ax.set_xlim(0, self.repeat_length)
 
-
         rospy.loginfo(f" {str(self.roll)}, {str(self.pitch)}, {str(self.yaw)}")
 
     def update_plot(self, frame):
         self.lines[0].set_data(self.time, self.roll_list)    
         self.lines[1].set_data(self.time, self.pitch_list)
         self.lines[2].set_data(self.time, self.yaw_list)
-        
+
         return self.lines
 
 
