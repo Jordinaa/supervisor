@@ -5,7 +5,7 @@
 """
 # helper files and datalogger function 
 from helper_functions import quaternionToEuler, eulerToQuaternion
-from data_logger_node import DataLogger
+from data_logger import DataLogger
 
 import argparse
 import numpy as np
@@ -85,14 +85,6 @@ class FlightEnvelopeSupervisor():
             rospy.loginfo('prebake commands')
         self.flag = True
 
-    # def set_mode(self):
-    #     # Set the flight mode of the drone
-    #     offb_set_mode = SetModeRequest()
-    #     offb_set_mode.custom_mode = self.mode
-
-    #     if self.setMode.call(offb_set_mode).mode_sent == True:
-    #         rospy.loginfo(f"{self.mode} mode enabled")
-
     def set_mode(self):
         # Set the flight mode of the drone
         offb_set_mode = SetModeRequest()
@@ -105,7 +97,6 @@ class FlightEnvelopeSupervisor():
             rospy.loginfo(f"{self.mode} mode enabled")
         except rospy.ServiceException as e:
             rospy.logwarn(f"Service call failed: {e}")
-
 
     def arm_drone(self):
         # Arm the drone
@@ -144,7 +135,7 @@ class FlightEnvelopeSupervisor():
                         self.flag = True
                         self.set_attitude()
                         self.rate.sleep()
-                
+
                 else:
                     self.flag = False
                     self.set_attitude()
@@ -173,12 +164,14 @@ class InformationNode():
         self.current_state = msg
         # print('state callback func')
 
+
     def position_cb(self, msg):
         qx = msg.pose.orientation.x
         qy = msg.pose.orientation.y
         qz = msg.pose.orientation.z
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
+
         # print('position call back func')
 
  
@@ -191,7 +184,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Initialize ROS node
-    rospy.init_node("offb_node_py")
+    rospy.init_node("Flight Envelope Supervisor")
     rate = rospy.Rate(20)
 
     # Here you will initalize the FEA and feed those return values into the FES class
