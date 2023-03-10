@@ -6,6 +6,7 @@
 # helper files and datalogger function 
 from helper_functions import quaternionToEuler, eulerToQuaternion
 from data_logger import DataLogger
+from flight_envelope_assessment import Visualiser, FlightEnvelopeAssessment
 
 import argparse
 import numpy as np
@@ -105,12 +106,6 @@ class FlightEnvelopeSupervisor():
         if self.arm.call(arm_cmd).success == True:
             rospy.loginfo("Vehicle armed")
 
-    # def out_of_roll_bounds(self):
-    #     if np.rad2deg(self.info_node.roll) > self.maxRoll or np.rad2deg(self.info_node.roll) < -self.maxRoll:
-    #         rospy.logwarn('Out of bounds')
-    #         return True
-    #     return False
-
     def out_of_roll_bounds(self):
         roll_deg = np.rad2deg(self.info_node.roll)
         return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
@@ -158,7 +153,7 @@ class InformationNode():
         self.local_position_topic = "mavros/local_position/pose"
         self.state_sub = rospy.Subscriber(self.state_topic, State, callback=self.state_cb)
         self.position_sub = rospy.Subscriber(self.local_position_topic, PoseStamped, callback=self.position_cb)
-        print("Information Node initialized")
+
 
     def state_cb(self, msg):
         self.current_state = msg
