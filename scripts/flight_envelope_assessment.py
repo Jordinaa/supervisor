@@ -32,43 +32,27 @@ class Visualiser:
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
-        self.true_roll = 0.0
-        self.true_pitch = 0.0
-        self.true_yaw = 0.0
         
-        self.fig, (self.ax1,self.ax2) = plt.subplots(2,1)
+        self.fig, self.ax = plt.subplots()
         self.colors = ['orange','blue','red']
-        
         self.labels = ['roll','pitch','yaw']
-        self.labels2 = ['true_roll', 'true_pitch', 'true_pitch']
-        
-        self.lines = [self.ax1.plot([], [])[0] for _ in range(3)]
-        self.lines2 = [self.ax2.plot([], [])[0] for _ in range(3)]
-        
-        for i, line in enumerate(self.lines):
-            line._color = self.colors[i]
-            line.set_label(self.labels[i])
-        
-        for i, line in enumerate(self.lines2):
-            line._color = self.colors[i]
-            line.set_label(self.labels2[i])
+        self.lines = [self.ax.plot([], [], label=label, color=color)[0] for label, color in zip(self.labels, self.colors)]
         
         self.time = []
-        self.roll_list, self.true_roll_list = [], []
-        self.pitch_list, self.true_pitch_list = [], []
-        self.yaw_list, self.true_yaw_list = [], []
+        self.roll_list = []
+        self.pitch_list = []
+        self.yaw_list = []
         
-        self.repeat_length = 100
+        self.repeat_length = 10
         
         sub1 = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
 
-        self.ax1.legend(handles = self.lines)
-        self.ax2.legend(handles = self.lines2)
-    
+        self.ax.legend()
+
     def plot_init(self):
-        for ax in [self.ax1,self.ax2]:
-            ax.set_xlim(left=0, right=self.repeat_length)
-        return self.lines, self.lines2
+        self.ax.set_xlim(left=0, right=self.repeat_length)
+        self.ax.set_ylim([-180, 180])
+        return self.lines
 
     def position_cb(self, msg):
         time = rospy.get_time() - time_zero
@@ -78,43 +62,32 @@ class Visualiser:
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
         
+        # convert from rads to degrees
+        self.roll = np.rad2deg(self.roll)
+        self.pitch = np.rad2deg(self.pitch)
+        self.yaw = np.rad2deg(self.yaw)
+        
         time_index = len(self.time)
-        self.time.append(time_index+1)
 
+        self.time.append(time_index+1)
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
         self.yaw_list.append(self.yaw)
         
-        self.true_roll_list.append(self.true_roll)
-        self.true_pitch_list.append(self.true_pitch)
-        self.true_yaw_list.append(self.true_yaw)
+        if time_index > self.repeat_length:
+            self.ax.set_xlim(time_index-self.repeat_length, time_index)
+        else:
+            self.ax.set_xlim(0, self.repeat_length)
 
-        for ax in [self.ax1,self.ax2]:
-            if time_index > self.repeat_length:
-                ax.set_xlim(time_index-self.repeat_length, time_index)
-            else:
-                ax.set_xlim(0, self.repeat_length)
+
+        rospy.loginfo(f" {str(self.roll)}, {str(self.pitch)}, {str(self.yaw)}")
 
     def update_plot(self, frame):
-        self.lines[0].set_data(self.time, self.roll_list)
-        self.lines[0].set_label(self.labels[0])        
-        
+        self.lines[0].set_data(self.time, self.roll_list)    
         self.lines[1].set_data(self.time, self.pitch_list)
-        self.lines[1].set_label(self.labels[1])
-        
         self.lines[2].set_data(self.time, self.yaw_list)
-        self.lines[2].set_label(self.labels[2])
-            
-        self.lines2[0].set_data(self.time, self.true_roll_list)
-        self.lines2[0].set_label(self.labels2[0])
-    
-        self.lines2[1].set_data(self.time, self.true_pitch_list)
-        self.lines2[1].set_label(self.labels2[1])
         
-        self.lines2[2].set_data(self.time, self.true_yaw_list)
-        self.lines2[2].set_label(self.labels2[2])
-        
-        return self.lines, self.lines2
+        return self.lines
 
 
 class FlightEnvelopeAssessment():
