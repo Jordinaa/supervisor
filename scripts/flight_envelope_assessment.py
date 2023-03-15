@@ -85,6 +85,7 @@ class Visualiser:
         else:
             self.ax.set_xlim(0, self.repeat_length)
 
+        # static data
         left_x, right_x = self.ax.get_xlim()
         self.static_x_updated = [x + left_x for x in self.static_x]
         self.static_line.set_data(self.static_x_updated, self.static_data)
