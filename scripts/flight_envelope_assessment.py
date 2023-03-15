@@ -37,22 +37,31 @@ class Visualiser:
         self.colors = ['orange','blue','red']
         self.labels = ['roll','pitch','yaw']
         self.lines = [self.ax.plot([], [], label=label, color=color)[0] for label, color in zip(self.labels, self.colors)]
-        
+        # equivalent code but same thing 
+        # self.lines = []
+        # for label, color in zip(self.labels, self.colors):
+        #     line_object = self.ax.plot([], [], label=label, color=color)[0]
+        #     self.lines.append(line_object)
+
         self.time = []
         self.roll_list = []
         self.pitch_list = []
         self.yaw_list = []
 
-        self.repeat_length = 50
-        
+        self.repeat_length = 100
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
+    
+        # static data 
+        self.static_data = [30, 60, 90, 120, 150]
+        self.static_x = list(range(len(self.static_data)))
+        self.static_line, = self.ax.plot(self.static_x, self.static_data, color='green', label='static_data')
+        self.static_x_updated = self.static_x
 
         self.ax.legend()
 
     def plot_init(self):
         self.ax.set_xlim(left=0, right=self.repeat_length)
         self.ax.set_ylim([-180, 180])
-
         return self.lines
 
     def position_cb(self, msg):
@@ -61,7 +70,6 @@ class Visualiser:
         qz = msg.pose.orientation.z
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
-        
         self.roll = np.rad2deg(self.roll)
         self.pitch = np.rad2deg(self.pitch)
         self.yaw = np.rad2deg(self.yaw)
@@ -71,13 +79,17 @@ class Visualiser:
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
         self.yaw_list.append(self.yaw)
-        
+
         if time_index > self.repeat_length:
             self.ax.set_xlim(time_index-self.repeat_length, time_index)
         else:
             self.ax.set_xlim(0, self.repeat_length)
 
-        rospy.loginfo(f" {str(self.roll)}, {str(self.pitch)}, {str(self.yaw)}")
+        left_x, right_x = self.ax.get_xlim()
+        self.static_x_updated = [x + left_x for x in self.static_x]
+        self.static_line.set_data(self.static_x_updated, self.static_data)
+
+        rospy.loginfo(f"{str(self.roll)} {str(self.pitch)} {str(self.yaw)}")
 
     def update_plot(self, frame):
         self.lines[0].set_data(self.time, self.roll_list)    
@@ -89,7 +101,7 @@ class Visualiser:
 
 class FlightEnvelopeAssessment():
     '''
-    the flight envelopeassessment class takes in a models data and it will define the bounds/limits
+    The Flight Envelope Assessment class takes in a models data and it will define the bounds/limits
     of the flight envelope which will then be fed into the supervisor which will set the bounds 
     of the aircraft
     '''
@@ -131,17 +143,20 @@ class FlightEnvelopeAssessment():
 
 if __name__ == "__main__":
 
-    rospy.init_node('visualize_tracking')
+    rospy.init_node('flight_envelope_assessment_node')
     plt.close("all")
     rate = rospy.Rate(20)
     time_zero = rospy.get_time()
     vis = Visualiser()
 
-    while not rospy.is_shutdown():
-        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init, 
-                            frames=10,blit=False)
-        plt.show(block=True)
-        rate.sleep()
+    try:
+        while not rospy.is_shutdown():
+            ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init, frames=10, blit=False)
+            plt.show(block=True)
+            rate.sleep()
+
+    except KeyboardInterrupt:
+        print("Exiting Flight Envelope Assessment")
 
     assessment = FlightEnvelopeAssessment(A0, CLA, CDA, ALPHA_STALL, WINGAREA, AIR_DENSITY, MASS, G)
     print(assessment.clMax)
