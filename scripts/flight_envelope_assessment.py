@@ -6,10 +6,8 @@ import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import VFR_HUD
-
 from helper_functions import quaternionToEuler, eulerToQuaternion
 from data_logger import DataLogger
-
 
 # xml parser will need to be updated and maybe take in user input vs reading only gazebo files
 A0 = 0.05984281113
@@ -23,75 +21,58 @@ AIR_DENSITY = 1.2041
 MASS = 1.5
 G = 9.81
 
-# alpha_stallDeg = np.rad2deg(0.3391428111)
-
-
-
 class Visualiser:
     '''
     The Visualizer class plots the rolly, pitch, yaw data live and overlays a static plot to compare real-time
     data vs. bounds
     '''
     def __init__(self):
-        # initalizes the Flight Envelope Assessment class
+        bounds = FlightEnvelopeAssessment(A0, CLA, CDA, ALPHA_STALL, WINGAREA, AIR_DENSITY, MASS, G, CLA_STALL, CDA_STALL)
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
         self.velocity = 0.0
-        
-        self.fig, self.ax = plt.subplots()
-        self.colors = ['orange','blue','red']
-        self.labels = ['roll','pitch','yaw']
-        self.lines = [self.ax.plot([], [], label=label, color=color)[0] for label, color in zip(self.labels, self.colors)]
-        # equivalent code but same thing 
-        # self.lines = []
-        # for label, color in zip(self.labels, self.colors):
-        #     line_object = self.ax.plot([], [], label=label, color=color)[0]
-        #     self.lines.append(line_object)
-
-        self.time = []
-        self.velocity_list = []
+        self.load_factor = 0.0
+        self.time_list = []
         self.roll_list = []
         self.pitch_list = []
         self.yaw_list = []
         self.load_factor_list = []
-        
-        # y-axis
-        self.load_factor_line, = self.ax.plot([], [], label='load factor', color='purple')
+        self.velocity_list = []
 
-        self.repeat_length = 100
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
 
-        # static data 
-        # place the calculated flight envelope here 
-        self.static_data = []
-        self.static_x = list(range(len(self.static_data)))
-        self.static_line, = self.ax.plot(self.static_x, self.static_data, color='green', label='static_data')
-        self.static_x_updated = self.static_x
+        # live data
+        self.fig, self.ax = plt.subplots()
+        self.colors = ['blue']
+        self.labels = ['Load Factor']
+        self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=2)[0] for label, color in zip(self.labels, self.colors)]
 
+        # static data 
+        static_velocity, static_load_factor = bounds.calc_load_factor_vs_velocity()
+        self.static_line, = self.ax.plot(static_velocity, static_load_factor, color='red', label='Limit of N')
+        self.bottom_static = [-x for x in static_load_factor]
+        self.ax.plot(static_velocity, self.bottom_static, color='red', label='-Limit of N')
+        self.ax.axhline(y=1, color='orange', linestyle='--')
+        self.ax.axhline(y=-1, color='orange', linestyle='--')
         self.ax.legend()
 
+
+
+
     def plot_init(self):
-        self.ax.set_xlim(left=0, right=self.repeat_length)
+        self.ax.set_xlim(left=0, right=30)
         self.ax.set_ylim([-5, 5])
         return self.lines
 
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
-        rospy.loginfo(f"speed: {self.velocity:.4g}")
-
-        time_index = len(self.time)
-        self.time.append(time_index+1)
-
-        if time_index > self.repeat_length:
-            self.ax.set_xlim(time_index-self.repeat_length, time_index)
-        else:
-            self.ax.set_xlim(0, self.repeat_length)
-
-        left_x, right_x = self.ax.get_xlim()
-        self.static_x_updated = [x + left_x for x in self.static_x]
-        self.static_line.set_data(self.static_x_updated, self.static_data)
+        self.velocity_list.append(self.velocity)
+        self.load_factor = bounds.calc_load_factor(self.velocity)
+        self.load_factor_list.append(self.load_factor)
+        # rospy.loginfo(f"load factor: {self.load_factor}")
+        # rospy.loginfo(f"speed: {self.velocity:.4g}")
 
     def position_cb(self, msg):
         qx = msg.pose.orientation.x
@@ -102,37 +83,21 @@ class Visualiser:
         self.roll = np.rad2deg(self.roll)
         self.pitch = np.rad2deg(self.pitch)
         self.yaw = np.rad2deg(self.yaw)
-        
-        # time_index = len(self.time)
-        # self.time.append(time_index+1)
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
         self.yaw_list.append(self.yaw)
+        # rospy.loginfo(f"{self.roll:.3g} {self.pitch:.3g} {self.yaw:.3g}")
 
-        # if time_index > self.repeat_length:
-        #     self.ax.set_xlim(time_index-self.repeat_length, time_index)
-        # else:
-        #     self.ax.set_xlim(0, self.repeat_length)
-
-        # static data
-        # left_x, right_x = self.ax.get_xlim()
-        # self.static_x_updated = [x + left_x for x in self.static_x]
-        # self.static_line.set_data(self.static_x_updated, self.static_data)
-
-        rospy.loginfo(f"{self.roll:.3g} {self.pitch:.3g} {self.yaw:.3g}")
-
-    def update_plot(self, frame):
-        self.lines[0].set_data(self.time, self.roll_list)    
-        self.lines[1].set_data(self.time, self.pitch_list)
-        self.lines[2].set_data(self.time, self.yaw_list)
-        return self.lines 
+    def update_plot(self, frame):   
+        self.lines[0].set_data(self.velocity_list, self.load_factor_list)    
+        return self.lines
  
 
 class FlightEnvelopeAssessment():
     '''
-    The Flight Envelope Assessment class takes in a models data and it will define the bounds/limits
-    of the flight envelope which will then be fed into the supervisor which will set the bounds 
-    of the aircraft
+        The Flight Envelope Assessment class takes in a models data and it will define the bounds/limits
+        of the flight envelope which will then be fed into the supervisor which will set the bounds 
+        of the aircraft
     '''
     def __init__(self, A0, CLA, CDA, ALPHA_STALL, WINGAREA, AIR_DENSITY, MASS, G, CLA_STALL, CDA_STALL):
         self.alpha0 = A0
@@ -146,27 +111,26 @@ class FlightEnvelopeAssessment():
         self.mass = MASS
         self.g = G
 
-        self.coefficientLift = 0.0
-        self.dynamicPressure = 0.0
+        # calculated
+        self.coefficient_lift = 0.0
+        self.dynamic_pressure = 0.0
         self.lift = 0.0
         self.velocity = 0.0
-        self.loadFactor = 0.0
-        self.stallSpeed = 0.0
-        self.weight = 0.0
+        self.load_factor = 0.0
 
         self.vStall = 0.0
         self.clMaxWeights = [.2, .4, .6, .8]
 
-        self.coefficientLiftList = []
+        self.coefficient_lift_list = []
+
         self.angleList = np.arange(0, ALPHA_STALL, 0.01 * np.pi/180)
-
         for angle in self.angleList:
-            self.coefficientLift = self.calc_cl(angle)
-            self.coefficientLiftList.append(self.coefficientLift)
+            self.coefficient_lift = self.calc_cl(angle)
+            self.coefficient_lift_list.append(self.coefficient_lift)
 
-        self.clMax = max(self.coefficientLiftList)
-        self.angleListDegrees = np.rad2deg(self.angleList)
+        self.clMax = max(self.coefficient_lift_list)
         self.calc_vStall()
+        self.angleListDegrees = np.rad2deg(self.angleList)
 
     def calc_cl(self, angle_of_attack):
         cl = self.cla * (angle_of_attack - self.alpha0)
@@ -174,11 +138,12 @@ class FlightEnvelopeAssessment():
 
     def calc_vStall(self):
         self.vStall = np.sqrt((2 * self.mass * self.g) / (self.rho * self.area * self.clMax))
+        # rospy.loginfo(f"{self.vStall}")
 
     def calc_lift_coefficient_vs_aoa(self):
-        cl_max_index = np.argmax(self.coefficientLiftList)
+        cl_max_index = np.argmax(self.coefficient_lift_list)
         aoa = self.angleListDegrees
-        cl = self.coefficientLiftList
+        cl = self.coefficient_lift_list
         clMax = self.clMax
         return aoa, cl
 
@@ -186,20 +151,24 @@ class FlightEnvelopeAssessment():
         velocities = np.linspace(self.vStall, 1.5 * self.vStall, 100)
         lift_values = []
         for v in velocities:
-            self.dynamicPressure = 0.5 * self.rho * v ** 2
-            self.lift = self.clMax * self.area * self.dynamicPressure
+            self.dynamic_pressure = 0.5 * self.rho * v ** 2
+            self.lift = self.clMax * self.area * self.dynamic_pressure
             lift_values.append(self.lift)
         return velocities, lift_values
 
     def calc_load_factor_vs_velocity(self):
-        velocities = np.linspace(self.vStall, 1.5 * self.vStall, 100)
-        load_factors = []
+        velocities = np.linspace(0, self.vStall, 250)
+        calc_load_factor_list = []
         for v in velocities:
-            self.dynamicPressure = 0.5 * self.rho * v ** 2
-            self.lift = self.clMax * self.area * self.dynamicPressure
-            self.loadFactor = self.lift / (self.mass * self.g)
-            load_factors.append(self.loadFactor)
-        return velocities, load_factors
+            self.dynamic_pressure = 0.5 * self.rho * v ** 2
+            self.lift = self.clMax * self.area * self.dynamic_pressure
+            self.load_factor = self.lift / (self.mass * self.g)
+            calc_load_factor_list.append(self.load_factor)
+        return velocities, calc_load_factor_list
+    
+    def calc_load_factor(self, velocity):
+        load_factor = ((self.clMax * (.5 * self.rho * pow(velocity, 2)) * self.area) / (self.mass * self.g))
+        return load_factor
 
 
 if __name__ == "__main__":
@@ -213,7 +182,7 @@ if __name__ == "__main__":
 
     try:
         while not rospy.is_shutdown():
-            ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init, frames=10, blit=False)
+            ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init, frames=1, blit=False)
             plt.show(block=True)
             rate.sleep()
 
