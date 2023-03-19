@@ -45,7 +45,6 @@ class FlightEnvelopeSupervisor():
 
         self.local_position_pub = rospy.Publisher(self.local_position_topic, PoseStamped, queue_size=10)
         self.attitude_position_pub = rospy.Publisher(self.attitude_position_topic, AttitudeTarget, queue_size=1)
-  
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
         self.setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
 
@@ -171,14 +170,12 @@ class InformationNode():
 
  
 if __name__ == "__main__":
-
     # Parse command line arguments for roll and pitch
     parser = argparse.ArgumentParser()
     parser.add_argument("roll", type=float, help="Desired roll angle in degrees")
     parser.add_argument("pitch", type=float, help="Desired pitch angle in degrees")
     args = parser.parse_args()
 
-    # Initialize ROS node
     rospy.init_node("Flight Envelope Supervisor")
     rate = rospy.Rate(20)
 

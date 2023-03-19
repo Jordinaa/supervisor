@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
-from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 import numpy as np
 import rospy
-from geometry_msgs.msg import PoseStamped
-from mavros_msgs.msg import VFR_HUD, AttitudeTarget
-from sensor_msgs.msg import Imu
-from helper_functions import quaternionToEuler, eulerToQuaternion
-from data_logger import DataLogger
 
-# xml parser will need to be updated and maybe take in user input vs reading only gazebo files
-A0 = 0.05984281113 #zero lift angle of attack
-CLA = 4.752798721 #lift curve slope
+from geometry_msgs.msg import PoseStamped
+from mavros_msgs.msg import VFR_HUD
+from sensor_msgs.msg import Imu
+from helper_functions import quaternionToEuler
+
+A0 = 0.05984281113 
+CLA = 4.752798721
 CLA_STALL = -3.85 
 CDA = 0.6417112299
 CDA_STALL = -0.9233984055
@@ -29,40 +28,38 @@ class Visualiser:
     '''
     def __init__(self):
         bounds = FlightEnvelopeAssessment(A0, CLA, CDA, ALPHA_STALL, WINGAREA, AIR_DENSITY, MASS, G, CLA_STALL, CDA_STALL)
+
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
         self.velocity = 0.0
+        self.vertical_acceleration = 0.0
         self.load_factor = 0.0
+
         self.time_list = []
         self.roll_list = []
         self.pitch_list = []
         self.yaw_list = []
-        self.load_factor_list = []
         self.velocity_list = []
+        self.velocity_euler_list = []
+        self.load_factor_list = []
+        self.load_factor_euler_list = []
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
         subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.cl_callback)
-        
+
         # live data
         self.fig, self.ax = plt.subplots()
-        self.colors = ['blue']
-        self.labels = ['Load Factor']
+        self.colors = ['black', 'red']
+        self.labels = ['Load Factor', 'euler']
+        # self.colors = ['black']
+        # self.labels = ['Load Factor']
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=3)[0] for label, color in zip(self.labels, self.colors)]
 
-        # static data 
+        # static data
         static_velocity, static_load_factor = bounds.calc_load_factor_vs_velocity_static()
-        self.static_line, = self.ax.plot(static_velocity, static_load_factor, color='red', alpha=0.5, label='Limit of N')
-        self.bottom_static = [-x for x in static_load_factor]
-        self.ax.plot(static_velocity, self.bottom_static, color='red', alpha=0.5, label='-Limit of N')
-        self.ax.axhline(y=1, color='green', linestyle='--')
-        self.ax.axhline(y=-1, color='green', linestyle='--')
-        ticks = len(static_velocity)
-        self.ax.set_xticks(range(0, ticks, 5))
-        self.ax.set_yticks(range(-ticks, ticks, 1))
-        self.ax.grid(visible=True)
-        self.ax.legend()
+        self.static_plot(static_velocity, static_load_factor)
 
     def plot_init(self):
         self.ax.set_xlim(left=0, right=25)
@@ -72,9 +69,6 @@ class Visualiser:
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
         self.velocity_list.append(self.velocity)
-        self.load_factor_list.append(self.load_factor)
-        # rospy.loginfo(f"load factor: {self.load_factor}")
-        # rospy.loginfo(f"speed: {self.velocity:.4g}")
 
     def position_cb(self, msg):
         qx = msg.pose.orientation.x
@@ -82,32 +76,61 @@ class Visualiser:
         qz = msg.pose.orientation.z
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
-        # self.roll = np.rad2deg(self.roll)
-        # self.pitch = np.rad2deg(self.pitch)
-        # self.yaw = np.rad2deg(self.yaw)
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
         self.yaw_list.append(self.yaw)
-        # rospy.loginfo(f"{self.roll:.3g} {self.pitch:.3g} {self.yaw:.3g}")
 
     def cl_callback(self, msg):
         az = msg.linear_acceleration.z
-        # self.load_factor = bounds.calc_load_factor(self.velocity)
-        # rospy.loginfo(f"Linear Accleration: {az:.4g}")
+        self.vertical_acceleration = az
+
+    def calc_load_factor(self, velocity, roll):
+        lift_val = bounds.calc_lift(velocity, roll)
+        # load_factor = (lift_val/(bounds.mass * bounds.g))
+        load_factor = (lift_val/(bounds.mass * self.vertical_acceleration))
+        return load_factor
 
     def update_plot(self, frame):
         thinned_velocity_list = self.velocity_list[-10:]
         thinned_pitch_angle_list = self.pitch_list[-10:]
-        thinned_load_factor_list = []
-        for pitch, vel in zip(thinned_pitch_angle_list, thinned_velocity_list):
-            lift_val = bounds.calc_lift(vel, pitch)
-            n = (lift_val/(bounds.mass * bounds.g))
-            thinned_load_factor_list.append(n)
+        thinned_roll_angle_list = self.roll_list[-10:]
+        thinned_load_factor_list = self.load_factor_list[-10:]
+        # print(f"velocity: {self.velocity:.4} | pitch: {np.rad2deg(self.pitch):.4} | roll: {np.rad2deg(self.roll):.4}")
+
+        for vel, roll in zip(thinned_velocity_list, thinned_roll_angle_list):
+            load_factor = self.calc_load_factor(vel, roll)
+            thinned_load_factor_list.append(load_factor)
+            print(f"actual velocity: {vel:.4} | actual roll: {roll:.4} | actual n: {load_factor:.4}")
+
+        # step size for euler
+        step_size = .1
+        # this is the velocity list for euler
+        velocity_euler = np.arange(0, 1+step_size, step_size)
+        euler_init = thinned_velocity_list[-1]
+        s = np.zeros(len(velocity_euler))
+        s[0] = euler_init
+        for i in range(0, len(velocity_euler)-1):
+            print(f"velocity_euler: {velocity_euler[i]:.4} | thinned_roll_angle_list[i]: {thinned_roll_angle_list[i]:.4}")
+            euler_n = self.calc_load_factor(velocity_euler[i], thinned_roll_angle_list[-1])
+            s[i+1] = s[i] + step_size * euler_n
+            print(f"s[i+1] {s[i+1]:.4} | s[i]: {s[i]:.4} | step size: {step_size:.4} | euler n: {euler_n:.4}")
 
         self.lines[0].set_data(thinned_velocity_list, thinned_load_factor_list)
-        # self.lines[0].set_data(self.velocity_list, self.load_factor_list)    
+        self.lines[1].set_data(s, velocity_euler)
         return self.lines
  
+    def static_plot(self, static_velocity, static_load_factor):
+        self.bottom_static = [-x for x in static_load_factor]
+        self.ax.plot(static_velocity, static_load_factor, color='red', alpha=0.5, label='Limit of N')
+        self.ax.plot(static_velocity, self.bottom_static, color='red', alpha=0.5, label='Limit of -N')
+        self.ax.axhline(y=1, color='green', linestyle='--')
+        self.ax.axhline(y=-1, color='green', linestyle='--')
+        ticks = len(static_velocity)
+        self.ax.set_xticks(range(0, ticks, 5))
+        self.ax.set_yticks(range(-ticks, ticks, 1))
+        self.ax.grid(visible=True)
+        self.ax.legend()
+
 
 class FlightEnvelopeAssessment():
     '''
@@ -133,7 +156,6 @@ class FlightEnvelopeAssessment():
         self.lift = 0.0
         self.velocity = 0.0
         self.load_factor = 0.0
-
         self.vStall = 0.0
         self.clMaxWeights = [.2, .4, .6, .8]
 
@@ -144,39 +166,22 @@ class FlightEnvelopeAssessment():
             self.coefficient_lift_list.append(self.coefficient_lift)
 
         self.clMax = max(self.coefficient_lift_list)
-        self.calc_vStall()
+        self.calc_v_stall()
         self.angleListDegrees = np.rad2deg(self.angleList)
 
-    def calc_lift(self, velocity, pitch_angle):
-        l = (self.calc_cl(pitch_angle) * self.rho * velocity**2 * self.area) / 2
-        return l
-
     def calc_cl(self, angle_of_attack):
-        cl = self.cla * (angle_of_attack - self.alpha0)
-        return cl
+        clift = self.cla * (angle_of_attack - self.alpha0)
+        return clift
 
-    def calc_vStall(self):
+    def calc_lift(self, pitch_angle, velocity):
+        # not dividing by 2 here took it out 
+        lift = (self.calc_cl(pitch_angle) * self.rho * velocity**2 * self.area)
+        return lift
+
+    def calc_v_stall(self):
         self.vStall = np.sqrt((2 * self.mass * self.g) / (self.rho * self.area * self.clMax))
-        # rospy.loginfo(f"{self.vStall}")
-
-    def calc_lift_coefficient_vs_aoa(self):
-        cl_max_index = np.argmax(self.coefficient_lift_list)
-        aoa = self.angleListDegrees
-        cl = self.coefficient_lift_list
-        clMax = self.clMax
-        return aoa, cl
-
-    def calc_lift_vs_velocity(self):
-        velocities = np.linspace(self.vStall, 1.5 * self.vStall, 100)
-        lift_values = []
-        for v in velocities:
-            self.dynamic_pressure = 0.5 * self.rho * v ** 2
-            self.lift = self.clMax * self.area * self.dynamic_pressure
-            lift_values.append(self.lift)
-        return velocities, lift_values
 
     def calc_load_factor_vs_velocity_static(self):
-        # velocities = np.linspace(0, self.vStall, 250)
         velocities = np.linspace(0, 100, 250)
         calc_load_factor_list = []
         for v in velocities:
@@ -185,14 +190,6 @@ class FlightEnvelopeAssessment():
             self.load_factor = self.lift / (self.mass * self.g)
             calc_load_factor_list.append(self.load_factor)
         return velocities, calc_load_factor_list
-    
-    def calc_coeff_lift(self, accelerationZ, velocity):
-        cl = (accelerationZ * self.mass * self.g) / (.5 * self.rho * self.area * velocity ** 2)
-        return cl
-    
-    def calc_load_factor(self, cl, velocity, acclerationZ):
-        load_factor = ((cl * (.5 * self.rho * pow(velocity, 2)) * self.area) / (self.mass * acclerationZ))
-        return load_factor
 
 
 if __name__ == "__main__":
