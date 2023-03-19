@@ -90,6 +90,12 @@ class Visualiser:
         load_factor = (lift_val/(bounds.mass * self.vertical_acceleration))
         return load_factor
 
+    def calc_load_factor_euler(self, velocity, roll, acceleration):
+        lift_val = bounds.calc_lift(velocity, roll)
+        # load_factor = (lift_val/(bounds.mass * bounds.g))
+        load_factor = (lift_val/(bounds.mass * acceleration))
+        return load_factor
+
     def update_plot(self, frame):
         thinned_velocity_list = self.velocity_list[-10:]
         thinned_pitch_angle_list = self.pitch_list[-10:]
@@ -103,17 +109,30 @@ class Visualiser:
             print(f"actual velocity: {vel:.4} | actual roll: {roll:.4} | actual n: {load_factor:.4}")
 
         # step size for euler
-        step_size = .1
+        # step_size = .1
+        # dvdt = (self.velocity_list[-1] - self.velocity_list[-2]) / step_size
+        # # this is the velocity list for euler
+        # velocity_euler = np.arange(0, 1+step_size, step_size)
+        # euler_init = thinned_velocity_list[-1]
+        # s = np.zeros(len(velocity_euler))
+        # s[0] = euler_init
+        # for i in range(0, len(velocity_euler)-1):
+        #     print(f"velocity_euler: {velocity_euler[i]:.4} | thinned_roll_angle_list[i]: {thinned_roll_angle_list[i]:.4}")
+        #     euler_n = self.calc_load_factor(velocity_euler[i], thinned_roll_angle_list[-1])
+        #     s[i+1] = s[i] + step_size * euler_n
+        #     print(f"s[i+1] {s[i+1]:.4} | s[i]: {s[i]:.4} | step size: {step_size:.4} | euler n: {euler_n:.4}")
         # this is the velocity list for euler
+        step_size = .1
+        dvdt = (self.velocity_list[-1] - self.velocity_list[-2]) / step_size
         velocity_euler = np.arange(0, 1+step_size, step_size)
-        euler_init = thinned_velocity_list[-1]
+        s0 = thinned_velocity_list[-1]
         s = np.zeros(len(velocity_euler))
-        s[0] = euler_init
+        s[0] = s0
         for i in range(0, len(velocity_euler)-1):
-            print(f"velocity_euler: {velocity_euler[i]:.4} | thinned_roll_angle_list[i]: {thinned_roll_angle_list[i]:.4}")
-            euler_n = self.calc_load_factor(velocity_euler[i], thinned_roll_angle_list[-1])
+            # print(f"velocity_euler: {velocity_euler[i]:.4} | thinned_roll_angle_list[i]: {thinned_roll_angle_list[i]:.4}")
+            euler_n = self.calc_load_factor_euler(velocity_euler[i], thinned_roll_angle_list[-1], dvdt)
             s[i+1] = s[i] + step_size * euler_n
-            print(f"s[i+1] {s[i+1]:.4} | s[i]: {s[i]:.4} | step size: {step_size:.4} | euler n: {euler_n:.4}")
+            print(f"s[i+1] {s[i+1]:.4} | s[i]: {s[i]:.4} | step size: {dvdt:.4} | euler n: {euler_n:.4}")
 
         self.lines[0].set_data(thinned_velocity_list, thinned_load_factor_list)
         self.lines[1].set_data(s, velocity_euler)
