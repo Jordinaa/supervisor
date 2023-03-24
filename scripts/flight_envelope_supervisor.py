@@ -3,11 +3,6 @@
  * File: offb_node.py
  * Stack and tested in Gazebo 9 SITL
 """
-# helper files and datalogger function 
-from helper_functions import quaternionToEuler, eulerToQuaternion
-from data_logger import DataLogger
-from flight_envelope_assessment import Visualiser, FlightEnvelopeAssessment
-
 import argparse
 import numpy as np
 
@@ -16,6 +11,11 @@ from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State, AttitudeTarget
 from mavros_msgs.srv import CommandBool, CommandBoolRequest, SetMode, SetModeRequest
 from std_msgs.msg import Header
+
+from helper_functions import quaternionToEuler, eulerToQuaternion
+from flight_envelope_assessment import FlightEnvelopeAssessment
+
+
 
 class FlightEnvelopeSupervisor():
     """
@@ -166,7 +166,6 @@ class InformationNode():
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
 
-        # print('position call back func')
 
  
 if __name__ == "__main__":

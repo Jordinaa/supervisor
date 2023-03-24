@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from helper_functions import eulerToQuaternion, quaternionToEuler
+from helper_functions import quaternionToEuler
 import time 
 import csv
 import numpy as np
@@ -22,8 +22,6 @@ class DataLogger():
         self.roll = None
         self.pitch = None
         self.yaw = None
-
-        # csv file
         self.csv_path = "/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
@@ -74,21 +72,8 @@ class DataLogger():
         plt.show()
 
     def __del__(self):
-        # Close the CSV file when the object is destroyed
         self.csv_file.close()
     
-    # def live_plot(self):
-    #     plt.plot(self.time_data, self.roll_data, label='Roll')
-    #     plt.plot(self.time_data, self.pitch_data, label='Pitch')
-    #     plt.plot(self.time_data, self.yaw_data, label='Yaw')
-    #     plt.legend()
-    #     plt.title('Roll Pitch Yaw')
-    #     plt.xlabel('Time')
-    #     plt.ylabel('Angle in degrees')
-
-    #     return plt
-
-
 if __name__ == '__main__': 
     rospy.init_node('data_logger_node')
     rospy.loginfo('data logger node started')
