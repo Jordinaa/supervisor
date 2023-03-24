@@ -56,8 +56,10 @@ class Visualiser:
 
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=6)[0] for label, color in zip(self.labels, self.colors)]
     
-        static_velocity, static_load_factor = bounds.calc_load_factor_vs_velocity_static()
-        self.static_plot(static_velocity, static_load_factor)
+        static_velocity, static_load_factors = bounds.calc_load_factor_vs_velocity_static()
+        self.static_plot(static_velocity, static_load_factors)
+
+
 
     def plot_init(self):
         self.ax.set_xlim(left=0, right=25)
@@ -91,11 +93,6 @@ class Visualiser:
         az = msg.linear_acceleration.z
         self.vertical_acceleration = az
 
-
-
-
-
-
     def calc_load_factor1(self, velocity, pitch):
         lift_val = bounds.calc_lift(velocity, pitch)
         load_factor = (lift_val/(bounds.mass * bounds.g))
@@ -119,7 +116,8 @@ class Visualiser:
         n_total = np.sqrt(n_bank**2 + n_pitch**2)
         print(f"Load factor4: {n_total}")
         return n_total
-
+    
+    # i think this one works the others i have no clue. i do not have the intuition for this yet
     def calc_load_factor5(self, roll):
         n_bank = 1/np.cos(roll)
         print(f"Load factor5: {n_bank}")
@@ -178,7 +176,7 @@ class Visualiser:
         self.lines[1].set_data(self.thinned_velocity_list[-1], load_factor2)
         self.lines[2].set_data(self.thinned_velocity_list[-1], load_factor3)
         self.lines[3].set_data(self.thinned_velocity_list[-1], load_factor4)
-        self.lines[3].set_data(self.thinned_velocity_list[-1], load_factor5)
+        self.lines[4].set_data(self.thinned_velocity_list[-1], load_factor5)
 
         # euler_vel, euler_load_factor = self.predict_eulers()
         # self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
@@ -186,10 +184,13 @@ class Visualiser:
 
         return self.lines
  
-    def static_plot(self, static_velocity, static_load_factor):        
-        self.bottom_static = [-x for x in static_load_factor]
-        self.ax.plot(static_velocity, static_load_factor, color='red', alpha=0.5, label='Limit of N')
-        self.ax.plot(static_velocity, self.bottom_static, color='red', alpha=0.5, label='Limit of -N')
+    def static_plot(self, static_velocity, static_load_factors):        
+        line_styles = ['-', '-.', '--', '--', ':']  # Define different line styles for each weight
+        line_labels = ['clMax', 'Notify', 'Alert', 'Caution', 'Warning', 'uh']  # Define the labels for each line
+        line_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']  # Define the colors for each line
+        for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
+            self.ax.plot(static_velocity, load_factor, color=line_color, alpha=0.3, linestyle=line_style, label=label)
+
         self.ax.axhline(y=1, color='green', linestyle='--')
         self.ax.axhline(y=-1, color='green', linestyle='--')
         ticks = len(static_velocity)
@@ -224,7 +225,6 @@ class FlightEnvelopeAssessment():
         self.velocity = 0.0
         self.load_factor = 0.0
         self.vStall = 0.0
-        self.clMaxWeights = [.2, .4, .6, .8]
 
         self.coefficient_lift_list = []
         self.angleList = np.arange(0, ALPHA_STALL, 0.01 * np.pi/180)
@@ -234,6 +234,8 @@ class FlightEnvelopeAssessment():
             self.coefficient_lift_list.append(self.coefficient_lift)
 
         self.clMax = max(self.coefficient_lift_list)
+        self.clMaxWeights = [.5, .6, .7, .8,]
+
         self.calc_v_stall()
         self.angleListDegrees = np.rad2deg(self.angleList)
 
@@ -246,22 +248,34 @@ class FlightEnvelopeAssessment():
         lift = (self.calc_cl(AoA) * (self.rho * (velocity**2) * .5) * self.area)
         return lift
     
-    def calc_lift2(self, velocity, AoA):
-        lift = (self.calc_cl(AoA) * (self.rho * velocity**2 * .5) * self.area) 
-        return lift
-
     def calc_v_stall(self):
         self.vStall = np.sqrt((2 * self.mass * self.g) / (self.rho * self.area * self.clMax))
 
     def calc_load_factor_vs_velocity_static(self):
         velocities = np.linspace(0, 100, 250)
+        calc_load_factor_lists = []
+
+        # Calculate load factors for CLmax without any weight adjustments
         calc_load_factor_list = []
         for v in velocities:
             self.dynamic_pressure = 0.5 * self.rho * v ** 2
             self.lift = self.clMax * self.area * self.dynamic_pressure
             self.load_factor = self.lift / (self.mass * self.g)
             calc_load_factor_list.append(self.load_factor)
-        return velocities, calc_load_factor_list
+        calc_load_factor_lists.append(calc_load_factor_list)  # Add CLmax list to the list of load factor lists
+
+        # Calculate load factors for CLmax with weight adjustments
+        for weight in self.clMaxWeights:
+            calc_load_factor_list = []
+            for v in velocities:
+                self.dynamic_pressure = 0.5 * self.rho * v ** 2
+                self.lift = (self.clMax * weight) * self.area * self.dynamic_pressure
+                self.load_factor = self.lift / (self.mass * self.g)
+                calc_load_factor_list.append(self.load_factor)
+            calc_load_factor_lists.append(calc_load_factor_list)  # Add weighted CLmax list to the list of load factor lists
+
+        return velocities, calc_load_factor_lists
+
 
 
 if __name__ == "__main__":
