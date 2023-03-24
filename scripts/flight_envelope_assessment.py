@@ -91,9 +91,9 @@ class Visualiser:
         self.vertical_acceleration = az
 
 
-    def calc_load_factor2(self, velocity, roll, roll_rate, pitch_rate):
+    def calc_load_factor2(self, velocity, roll, pitch):
         lift_val = bounds.calc_lift2(velocity, roll)
-        load_factor = (lift_val/(bounds.mass * (np.cos(pitch_rate) / np.cos(roll_rate)) * bounds.g))
+        load_factor = (lift_val/(bounds.mass * (np.cos(pitch) / np.cos(roll)) * bounds.g))
         return load_factor
 
     def calc_load_factor(self, velocity, roll):
@@ -141,8 +141,8 @@ class Visualiser:
             self.thinned_load_factor_list.append(load_factor)
             print(f"actual velocity: {vel:.4} | actual roll: {roll:.4} | actual n: {load_factor:.4}")
         
-        for vel2, roll2, rollR2, pitchR2 in zip(self.thinned_velocity_list, self.thinned_roll_angle_list, self.thinned_roll_rate_list, self.thinned_pitch_rate_list):
-            load_factor2 = self.calc_load_factor2(vel2, roll2, rollR2, pitchR2)
+        for vel2, roll2, pitch2 in zip(self.thinned_velocity_list, self.thinned_roll_angle_list, self.thinned_pitch_angle_list):
+            load_factor2 = self.calc_load_factor2(vel2, roll2, pitch2)
             self.thinned_load_factor_list2.append(load_factor2)
             print(f"velocity: {vel2:.4} | roll: {roll2:.4} | cos n: {load_factor2:.4}")
 
