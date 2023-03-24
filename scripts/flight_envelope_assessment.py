@@ -108,7 +108,7 @@ class Visualiser:
         load_factor_euler_list[0] = start
         for i in range(1, len(euler_list)):
             load_factor_euler_list[i] = load_factor_euler_list[i-1] + step_size * dvdt
-            print(f"euler: {euler_list[i]} | load_factor: {load_factor_euler_list[i]}")
+            print(f"euler: {euler_list[i]:.4} | load_factor: {load_factor_euler_list[i]:.4}")
         
         return euler_list, load_factor_euler_list
 
