@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import seaborn as sns
 import numpy as np
 import time
 
@@ -9,8 +10,6 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import VFR_HUD
 from sensor_msgs.msg import Imu
-from mavros_msgs.msg import AttitudeTarget
-from geometry_msgs.msg import Vector3
 
 import config
 from helper_functions import quaternionToEuler
@@ -28,12 +27,11 @@ class Visualiser:
         self.yaw = 0.0
         self.velocity = 0.0
         self.vertical_acceleration = 0.0
-
         self.load_factor = 0.0
         self.load_factor_predict = 0.0
         self.previous_filtered_load_factor = None
         self.weight = .1
-        
+
         self.time_list = []
         self.roll_list = []
         self.pitch_list = []
@@ -52,15 +50,14 @@ class Visualiser:
         subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.az_callback)
         subRates = rospy.Subscriber('mavros/imu/data', Imu, self.rates_cb)
 
+        sns.set_style('whitegrid')
+        sns.set_palette('colorblind')
         self.fig, self.ax = plt.subplots()
         self.colors = ['blue', 'red']
-        self.labels = ['Load Factor Current', 'prediction']
-
+        self.labels = ['$n_{t}$', '$n_{p}$']
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
-    
         static_velocity, static_load_factors = bounds.calc_load_factor_vs_velocity_static()
         self.static_plot(static_velocity, static_load_factors)
-
 
     def plot_init(self):
         self.ax.set_xlim(left=0, right=25)
@@ -118,55 +115,46 @@ class Visualiser:
         return filtered_value
 
     def update_plot(self, frame):
-        # for vel, roll in zip(self.thinned_velocity_list, self.thinned_pitch_angle_list):
-        #     load_factor = self.calc_load_factor(vel, roll)
-        #     self.thinned_load_factor_list.append(load_factor)
-        #     print(f"velocity: {vel:.4} | roll1: {roll:.4} | n: {load_factor:.4}")
-        #     print(f"load_factor: {load_factor:.4}")
-
         for lol in range(0, 10):
             load_factor = self.calc_load_factor()
             self.load_factor_list.append(load_factor)
-
             next_load_factor = self.predict_next_load_factor(self.velocity_list, self.time_list)
             filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
             self.previous_filtered_load_factor = filtered_load_factor
             self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
-            
-        print(f'true n:            {load_factor:.4}')
-        print(f'predicted n:       {next_load_factor:.4}')
-        print(f'filtered n:        {filtered_load_factor:.4}')
-        print(f'filtered n + true: {filtered_load_factor + self.load_factor:.4}')
-
 
         self.thinned_velocity_list = self.velocity_list[-10:]
         self.thinned_load_factor_list = self.load_factor_list[-10:]
         self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
         self.thinned_time_list = self.time_list[-10:]
         self.thinned_load_factor_prediction_list = self.load_factor_prediction_list[-10:]
-        
-        # print(self.thinned_load_factor_prediction_list[-1])
 
         self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
         self.lines[1].set_data(self.thinned_velocity_list[-10:], self.load_factor_prediction_list[-10:])
-
+            
+        print(f'true n:            {load_factor:.4}')
+        print(f'predicted n:       {next_load_factor:.4}')
+        print(f'filtered n:        {filtered_load_factor:.4}')
+        print(f'filtered n + true: {filtered_load_factor + self.load_factor:.4}')
         print(f"difference:        {self.thinned_load_factor_prediction_list[-1] - self.thinned_load_factor_list[-1]:.4}")
         return self.lines
  
     def static_plot(self, static_velocity, static_load_factors):        
-        line_styles = ['-', '-.', '--', '--', ':']  # Define different line styles for each weight
-        line_labels = ['clMax', 'Notify', 'Alert', 'Caution', 'Warning', 'uh']  # Define the labels for each line
-        line_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']  # Define the colors for each line
+        line_styles = ['-', '-', '-', '-', '-']  # Define different line styles for each weight
+        line_labels = ['$Cl_{Max}$', '$Cl_{Max}$ ⋅ 0.9', '$Cl_{Max}$ ⋅ 0.8', '$Cl_{Max}$ ⋅ 0.7', '$Cl_{Max}$ ⋅ 0.6']  # Define the labels for each line   
+        line_colors = [plt.cm.Reds(x) for x in range(256, 128, -(256-128)//(6-1))]
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
-            self.ax.plot(static_velocity, load_factor, color=line_color, alpha=0.3, linestyle=line_style, label=label)
-
-        self.ax.axhline(y=1, color='green', linestyle='--', alpha=0.3)
-        self.ax.axhline(y=-1, color='green', linestyle='--', alpha=0.3)
+            self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=0.3, linewidth=2)
+        self.ax.axhline(y=1, color='green', linestyle='--', alpha=0.2, linewidth=2)
+        self.ax.axhline(y=-1, color='green', linestyle='--', alpha=0.2, linewidth=2)
         ticks = len(static_velocity)
-        self.ax.set_xticks(range(0, ticks, 5))
+        self.ax.set_xlabel('Velocity')
+        self.ax.set_xticks(range(0, int(ticks), 5))
+        self.ax.set_ylabel('Load Factor')
         self.ax.set_yticks(range(-ticks, ticks, 1))
+        self.ax.set_title('Load Factor vs. Velocity')
         self.ax.grid(visible=True)
-        self.ax.legend()
+        self.ax.legend(fontsize='small')
 
 
 class FlightEnvelopeAssessment():
@@ -187,7 +175,6 @@ class FlightEnvelopeAssessment():
         self.mass = MASS
         self.g = G
 
-        # calculated
         self.coefficient_lift = 0.0
         self.dynamic_pressure = 0.01
         self.lift = 0.0
@@ -197,14 +184,11 @@ class FlightEnvelopeAssessment():
 
         self.coefficient_lift_list = []
         self.angleList = np.arange(0, ALPHA_STALL, 0.01 * np.pi/180)
-
         for angle in self.angleList:
             self.coefficient_lift = self.calc_cl(angle)
             self.coefficient_lift_list.append(self.coefficient_lift)
-
         self.clMax = max(self.coefficient_lift_list)
-        self.clMaxWeights = [.5, .6, .7, .8,]
-
+        self.clMaxWeights = [.9, .8, .7, .6]
         self.calc_v_stall()
         self.angleListDegrees = np.rad2deg(self.angleList)
 
@@ -223,28 +207,25 @@ class FlightEnvelopeAssessment():
     def calc_load_factor_vs_velocity_static(self):
         velocities = np.linspace(0, 100, 250)
         calc_load_factor_lists = []
-
-        # Calculate load factors for CLmax without any weight adjustments
         calc_load_factor_list = []
+
         for v in velocities:
             self.dynamic_pressure = 0.5 * self.rho * v ** 2
             self.lift = self.clMax * self.area * self.dynamic_pressure
             self.load_factor = self.lift / (self.mass * self.g)
             calc_load_factor_list.append(self.load_factor)
-        calc_load_factor_lists.append(calc_load_factor_list)  # Add CLmax list to the list of load factor lists
-
-        # Calculate load factors for CLmax with weight adjustments
+        calc_load_factor_lists.append(calc_load_factor_list)
+        
         for weight in self.clMaxWeights:
             calc_load_factor_list = []
             for v in velocities:
                 self.dynamic_pressure = 0.5 * self.rho * v ** 2
-                self.lift = (self.clMax * weight) * self.area * self.dynamic_pressure
+                self.lift = self.clMax * weight * self.area * self.dynamic_pressure
                 self.load_factor = self.lift / (self.mass * self.g)
                 calc_load_factor_list.append(self.load_factor)
-            calc_load_factor_lists.append(calc_load_factor_list)  # Add weighted CLmax list to the list of load factor lists
+            calc_load_factor_lists.append(calc_load_factor_list)
 
         return velocities, calc_load_factor_lists
-
 
 
 if __name__ == "__main__":

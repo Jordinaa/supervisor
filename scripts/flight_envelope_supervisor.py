@@ -16,7 +16,6 @@ from helper_functions import quaternionToEuler, eulerToQuaternion
 from flight_envelope_assessment import FlightEnvelopeAssessment
 
 
-
 class FlightEnvelopeSupervisor():
     """
     This class will check the current state of the drone and if it is out of bounds it will set it back to steady level flight.
@@ -153,11 +152,9 @@ class InformationNode():
         self.state_sub = rospy.Subscriber(self.state_topic, State, callback=self.state_cb)
         self.position_sub = rospy.Subscriber(self.local_position_topic, PoseStamped, callback=self.position_cb)
 
-
     def state_cb(self, msg):
         self.current_state = msg
         # print('state callback func')
-
 
     def position_cb(self, msg):
         qx = msg.pose.orientation.x
@@ -165,7 +162,6 @@ class InformationNode():
         qz = msg.pose.orientation.z
         qw = msg.pose.orientation.w
         self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
-
 
  
 if __name__ == "__main__":
@@ -177,9 +173,6 @@ if __name__ == "__main__":
 
     rospy.init_node("Flight Envelope Supervisor")
     rate = rospy.Rate(20)
-
-    # Here you will initalize the FEA and feed those return values into the FES class
-    # which will set the bounds for the supervisor
 
     supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch)
     supervisor.pre_bake_commanders()
