@@ -224,12 +224,10 @@ class FlightEnvelopeAssessment():
         self.coefficient_lift_list = []
         
         self.angleList = np.arange(0, ALPHA_STALL, 0.01 * np.pi/180)
-        for angle in self.angleList:
-            self.coefficient_lift = self.calc_cl(angle)
-            self.coefficient_lift_list.append(self.coefficient_lift)
+        self.coefficient_lift_list = [self.calc_cl(angle) for angle in self.angleList]
         self.clMax = max(self.coefficient_lift_list)
         self.clMaxWeights = [.9, .8, .7, .6]
-        self.calc_v_stall()
+        self.vStall = self.calc_v_stall
         self.angleListDegrees = np.rad2deg(self.angleList)
 
     def calc_cl(self, angle_of_attack):
@@ -243,6 +241,7 @@ class FlightEnvelopeAssessment():
     
     def calc_v_stall(self):
         self.vStall = np.sqrt((2 * self.mass * self.g) / (self.rho * self.area * self.clMax))
+        return self.vStall
 
     def calc_load_factor_vs_velocity_static(self):
         velocities = np.linspace(0, 100, 250)
