@@ -22,6 +22,7 @@ class Visualiser:
     '''
     def __init__(self):
         bounds = FlightEnvelopeAssessment(config.A0, config.CLA, config.CDA, config.ALPHA_STALL, config.WINGAREA, config.AIR_DENSITY, config.MASS, config.G, config.CLA_STALL, config.CDA_STALL)
+        self.start_time = time.time()
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
@@ -44,16 +45,18 @@ class Visualiser:
         self.roll_euler_list = []
         self.vertical_acceleration_euler_list = []
 
+        self.vertical_acceleration_list = []
+
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
         subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.az_callback)
         subRates = rospy.Subscriber('mavros/imu/data', Imu, self.rates_cb)
 
         self.fig, self.ax = plt.subplots()
-        self.colors = ['blue']
-        self.labels = ['Load Factor Current']
+        self.colors = ['blue', 'red']
+        self.labels = ['Load Factor Current', 'prediction']
 
-        self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=6)[0] for label, color in zip(self.labels, self.colors)]
+        self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
     
         static_velocity, static_load_factors = bounds.calc_load_factor_vs_velocity_static()
         self.static_plot(static_velocity, static_load_factors)
@@ -90,6 +93,8 @@ class Visualiser:
     def az_callback(self, msg):
         az = msg.linear_acceleration.z
         self.vertical_acceleration = az
+        self.vertical_acceleration_list.append(self.vertical_acceleration)
+        self.time_list.append(time.time() - self.start_time)
 
 
     def calc_load_factor(self):
@@ -118,6 +123,29 @@ class Visualiser:
             print(f"euler: {euler_list[i]:.4} | load_factor: {load_factor_euler_list[i]:.4}")
         
         return euler_list, load_factor_euler_list
+
+    def predict_next_load_factor2(self, velocity_list, time_list):
+        # Calculate deltaV using the equation provided
+        v_final = velocity_list[-1]
+        v_initial = velocity_list[-2]
+        dt = time_list[-1] - time_list[-2]
+        delta_v = (v_final - v_initial) / dt
+
+        # Calculate the next load factor using the vertical acceleration
+        load_factor = delta_v / bounds.g
+        print(f"load factor predcition: {load_factor:.4}")
+        return load_factor
+
+
+    def fit_linear_regression(self, X, y):
+        X = np.column_stack((np.ones(len(X)), X))
+        beta = np.linalg.inv(X.T @ X) @ X.T @ y
+        return beta
+
+    def predict_load_factor(self, X, beta):
+        X = np.column_stack((np.ones(len(X)), X))
+        y_pred = X @ beta
+        return y_pred
 
     # eulers new 
     def eulers(self, start, end, list, list2):
@@ -150,8 +178,17 @@ class Visualiser:
         
         self.thinned_velocity_list = self.velocity_list[-10:]
         self.thinned_load_factor_list = self.load_factor_list[-10:]
+        self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
+        self.thinned_time_list = self.time_list[-10:]
+    
+        # beta = self.fit_linear_regression(self.thinned_vertical_acceleration_list, self.thinned_load_factor_list)
+        # next_vertical_acceleration = np.array([self.vertical_acceleration])
+        # predicted_load_factor = self.predict_load_factor2(next_vertical_acceleration, beta)
+
+        next_load_factor = self.predict_next_load_factor2(self.thinned_velocity_list, self.thinned_time_list)
 
         self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
+        self.lines[1].set_data(self.thinned_velocity_list + [self.velocity], next_load_factor+self.thinned_load_factor_list[-1])
         return self.lines
  
     def static_plot(self, static_velocity, static_load_factors):        
