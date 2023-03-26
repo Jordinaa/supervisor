@@ -5,17 +5,14 @@ from matplotlib.animation import FuncAnimation
 import seaborn as sns
 import numpy as np
 import time
-import csv
 
 import rospy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import VFR_HUD, State
 from sensor_msgs.msg import Imu
-from offboard_py.msg import FourFloats
 
 import config
 from helper_functions import quaternionToEuler
-from data_logger import DataLogger
 
 class Visualiser:
     '''
@@ -49,27 +46,27 @@ class Visualiser:
         self.load_factor_list = []
         self.load_factor_prediction_list = []
 
-        self.csv_path = "/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv"
-        self.csv_file = open(self.csv_path, "w", newline="")
-        self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(['time', 'load_factor', 'load_factor_predict', 'accelerationZ'])
-
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
         subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.az_callback)
         subRates = rospy.Subscriber('mavros/imu/data', Imu, self.rates_cb)
         subState = rospy.Subscriber('mavros/state', State, callback=self.state_cb)
-        SubVNData = rospy.Subscriber('vn_data_sub', FourFloats, callback=self.vn_data_callback)
-
-        self.pub = rospy.Publisher('vn_data_pub', FourFloats, queue_size=10)
 
         sns.set_style('whitegrid')
         sns.set_palette('colorblind')
-        self.fig, (self.ax) = plt.subplots()
+        self.fig, (self.ax, self.ax2, self.ax3) = plt.subplots(1, 3, figsize=(10, 10))
 
         self.colors = ['blue', 'red']
         self.labels = ['$n_{t}$', '$n_{p}$']
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
+
+        self.colors2 = ['blue', 'red']
+        self.labels2 = ['$C_L$', '$AoA$']
+        self.lines2 = [self.ax2.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels2, self.colors2)]
+
+        self.colors3 = ['blue']
+        self.labels3 = ['$Lift$']
+        self.lines3 = [self.ax3.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels3, self.colors3)]
 
         static_velocity, static_load_factors = bounds.calc_load_factor_vs_velocity_static()
         self.static_plot(static_velocity, static_load_factors)
@@ -83,7 +80,13 @@ class Visualiser:
         qy = msg.pose.orientation.y
         qz = msg.pose.orientation.z
         qw = msg.pose.orientation.w
-        self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)   
+        self.roll, self.pitch, self.yaw = quaternionToEuler(qx, qy, qz, qw)
+        
+        self.cl_list.append(self.bounds.calc_cl(self.pitch))
+        pitch2deg = np.rad2deg(self.pitch)
+        self.pitch_list.append(pitch2deg)
+        
+    
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
         self.yaw_list.append(self.yaw)
@@ -104,21 +107,6 @@ class Visualiser:
     
     def state_cb(self, msg):
         self.current_state = msg
-
-    def vn_data_callback(self, msg):
-        self.m1 = msg.value1
-        self.m2 = msg.value2
-        self.m3 = msg.value3
-        self.m4 = msg.value4
-
-    def vn_data_publisher(self):
-        start_time = time.time()
-        four_floats = FourFloats()
-        four_floats.value1 = self.time_list[-1] 
-        four_floats.value2 = self.load_factor_list[-1]
-        four_floats.value3 = self.load_factor_prediction_list[-1]
-        four_floats.value4 = self.vertical_acceleration_list[-1]
-        self.pub.publish(four_floats)
 
     def calc_load_factor(self):
         load_factor = self.vertical_acceleration / bounds.g
@@ -146,13 +134,27 @@ class Visualiser:
         self.ax.set_ylim([-5, 10])
         self.ax.axhline(y=1, color='green', linestyle='--', alpha=0.2, linewidth=2)
         self.ax.axhline(y=-1, color='green', linestyle='--', alpha=0.2, linewidth=2)
+        ticks = 25
         self.ax.set_xlabel('Velocity')
-        # self.ax.set_xticks(range(0, int(ticks), 5))
+        self.ax.set_xticks(range(0, int(ticks), 5))
         self.ax.set_ylabel('Load Factor')
-        # self.ax.set_yticks(range(-ticks, ticks, 1))
+        self.ax.set_yticks(range(-ticks, ticks, 1))
         self.ax.set_title('Load Factor vs. Velocity')
         self.ax.grid(visible=True)
         self.ax.legend(fontsize='small')
+
+        self.ax2.set_xlim(left=0, right=20)
+        # self.ax2.set_ylim([-5, 10])
+        self.ax2.set_xlabel('Angle of Attack')
+        self.ax2.set_ylabel('Coefficent of lift')
+        self.ax2.legend(fontsize='small')
+
+        self.ax3.set_xlim(left=0, right=25)
+        # self.ax3.set_ylim([-5, 10])
+        self.ax3.set_xlabel('Lift')
+        self.ax3.set_ylabel('Velocity')
+        self.ax3.legend(fontsize='small')
+
         return self.lines
 
 
@@ -165,17 +167,22 @@ class Visualiser:
             self.previous_filtered_load_factor = filtered_load_factor
             self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
 
-
-            self.vn_data_publisher()
-        
         self.thinned_velocity_list = self.velocity_list[-10:]
         self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
 
         self.thinned_load_factor_list = self.load_factor_list[-10:]
         self.thinned_load_factor_prediction_list = self.load_factor_prediction_list[-10:]
 
+        self.thinned_time_list = self.time_list[-10:]
+
+        self.thinned_pitch_list = self.pitch_list[-10:]
+        self.thinned_cl_list = self.cl_list[-10:]
+
         self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
         self.lines[1].set_data(self.thinned_velocity_list[-10:], self.load_factor_prediction_list[-10:])
+        # self.lines[2].set_data(self.thinned_pitch_list, self.thinned_cl_list)
+
+        # self.lines[3].set_data()
 
         print(f'true n:            {load_factor:.4}')
         print(f'predicted n:       {next_load_factor:.4}')
@@ -191,8 +198,6 @@ class Visualiser:
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
             self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=0.3, linewidth=2)
 
-    def __del__(self):
-        self.csv_file.close()
 
 
 
@@ -283,8 +288,6 @@ if __name__ == "__main__":
             plt.show(block=True)
             rate.sleep()
         plt.close('all')
-        vis.__del__()
-
     except KeyboardInterrupt:
         print("Exiting Flight Envelope Assessment")
 

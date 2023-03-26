@@ -169,12 +169,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("roll", type=float, help="Desired roll angle in degrees")
     parser.add_argument("pitch", type=float, help="Desired pitch angle in degrees")
+    parser.add_argument("yaw", type=float, help="Desired yaw angle in degrees")
+
     args = parser.parse_args()
 
     rospy.init_node("Flight Envelope Supervisor")
     rate = rospy.Rate(20)
 
-    supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch)
+    supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch, args.yaw)
     supervisor.pre_bake_commanders()
     supervisor.set_mode()
     supervisor.arm_drone()
