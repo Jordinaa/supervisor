@@ -28,7 +28,12 @@ class Visualiser:
         self.yaw = 0.0
         self.velocity = 0.0
         self.vertical_acceleration = 0.0
+
         self.load_factor = 0.0
+        self.load_factor_predict = 0.0
+        self.previous_filtered_load_factor = None
+        self.weight = .1
+        
         self.time_list = []
         self.roll_list = []
         self.pitch_list = []
@@ -36,16 +41,11 @@ class Visualiser:
         self.roll_rate_list = []
         self.pitch_rate_list = []
         self.yaw_rate_list = []
-        
         self.velocity_list = []
-        self.load_factor_list = []
-
-        self.load_factor_euler_list = []
-        self.velocity_euler_list = []
-        self.roll_euler_list = []
-        self.vertical_acceleration_euler_list = []
-
         self.vertical_acceleration_list = []
+
+        self.load_factor_list = []
+        self.load_factor_prediction_list = []
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
@@ -96,73 +96,26 @@ class Visualiser:
         self.vertical_acceleration_list.append(self.vertical_acceleration)
         self.time_list.append(time.time() - self.start_time)
 
-
     def calc_load_factor(self):
         load_factor = self.vertical_acceleration / bounds.g
         self.load_factor_list.append(load_factor)
+        self.load_factor = load_factor
         return load_factor
 
-    # eulers old
-    def calc_load_factor_euler(self, velocity, roll, acceleration):
-        lift_val = bounds.calc_lift(velocity, roll)
-        # load_factor = (lift_val/(bounds.mass * bounds.g))
-        load_factor = (lift_val/(bounds.mass * acceleration))
-        return load_factor
-
-    def predict_eulers(self):
-        step_size = .1
-        start = 0 + self.velocity_list[-1]
-        end = 1 + step_size
-        dvdt = (self.velocity_list[-1] - self.velocity_list[-2]) / step_size
-        print(f"dvdt: {dvdt}")
-        euler_list = np.arange(0, end, step_size)
-        load_factor_euler_list = np.zeros(len(euler_list))
-        load_factor_euler_list[0] = start
-        for i in range(1, len(euler_list)):
-            load_factor_euler_list[i] = load_factor_euler_list[i-1] + step_size * dvdt
-            print(f"euler: {euler_list[i]:.4} | load_factor: {load_factor_euler_list[i]:.4}")
-        
-        return euler_list, load_factor_euler_list
-
-    def predict_next_load_factor2(self, velocity_list, time_list):
-        # Calculate deltaV using the equation provided
+    def predict_next_load_factor(self, velocity_list, time_list):
         v_final = velocity_list[-1]
         v_initial = velocity_list[-2]
         dt = time_list[-1] - time_list[-2]
         delta_v = (v_final - v_initial) / dt
+        prediction = delta_v / bounds.g
+        return prediction
 
-        # Calculate the next load factor using the vertical acceleration
-        load_factor = delta_v / bounds.g
-        print(f"load factor predcition: {load_factor:.4}")
-        return load_factor
-
-
-    def fit_linear_regression(self, X, y):
-        X = np.column_stack((np.ones(len(X)), X))
-        beta = np.linalg.inv(X.T @ X) @ X.T @ y
-        return beta
-
-    def predict_load_factor(self, X, beta):
-        X = np.column_stack((np.ones(len(X)), X))
-        y_pred = X @ beta
-        return y_pred
-
-    # eulers new 
-    def eulers(self, start, end, list, list2):
-        x0 = start
-        y0 = 1
-        xf = end
-        n = 101
-        deltax = (xf-x0) / (n-1)
-        x = np.linspace(x0,xf,n) 
-        y = np.zeros([n])
-        y[0] = y0
-        for i in range (1, n):
-            y[i]=deltax*(-y[i-1]+np.sin(x[i-1]))+y[i-1]
-
-        list.append(y)
-        list2.append(x)
-        return list, list2
+    def first_order_filter(self, raw_value, previous_filtered_value, weight):
+        if previous_filtered_value is None:
+            filtered_value = raw_value
+        else:
+            filtered_value = weight * raw_value + (1 - weight) * previous_filtered_value
+        return filtered_value
 
     def update_plot(self, frame):
         # for vel, roll in zip(self.thinned_velocity_list, self.thinned_pitch_angle_list):
@@ -174,21 +127,30 @@ class Visualiser:
         for lol in range(0, 10):
             load_factor = self.calc_load_factor()
             self.load_factor_list.append(load_factor)
-            print(f"load_factor: {load_factor:.4}")
-        
+
+            next_load_factor = self.predict_next_load_factor(self.velocity_list, self.time_list)
+            filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
+            self.previous_filtered_load_factor = filtered_load_factor
+            self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
+            
+        print(f'true n:            {load_factor:.4}')
+        print(f'predicted n:       {next_load_factor:.4}')
+        print(f'filtered n:        {filtered_load_factor:.4}')
+        print(f'filtered n + true: {filtered_load_factor + self.load_factor:.4}')
+
+
         self.thinned_velocity_list = self.velocity_list[-10:]
         self.thinned_load_factor_list = self.load_factor_list[-10:]
         self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
         self.thinned_time_list = self.time_list[-10:]
-    
-        # beta = self.fit_linear_regression(self.thinned_vertical_acceleration_list, self.thinned_load_factor_list)
-        # next_vertical_acceleration = np.array([self.vertical_acceleration])
-        # predicted_load_factor = self.predict_load_factor2(next_vertical_acceleration, beta)
-
-        next_load_factor = self.predict_next_load_factor2(self.thinned_velocity_list, self.thinned_time_list)
+        self.thinned_load_factor_prediction_list = self.load_factor_prediction_list[-10:]
+        
+        # print(self.thinned_load_factor_prediction_list[-1])
 
         self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
-        self.lines[1].set_data(self.thinned_velocity_list + [self.velocity], next_load_factor+self.thinned_load_factor_list[-1])
+        self.lines[1].set_data(self.thinned_velocity_list[-10:], self.load_factor_prediction_list[-10:])
+
+        print(f"difference:        {self.thinned_load_factor_prediction_list[-1] - self.thinned_load_factor_list[-1]:.4}")
         return self.lines
  
     def static_plot(self, static_velocity, static_load_factors):        
