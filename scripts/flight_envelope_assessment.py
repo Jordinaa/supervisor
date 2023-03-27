@@ -164,10 +164,7 @@ class Visualiser:
             filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
             self.previous_filtered_load_factor = filtered_load_factor
             self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
-
-
             self.vn_data_publisher()
-        
         self.thinned_velocity_list = self.velocity_list[-10:]
         self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
 
@@ -189,7 +186,7 @@ class Visualiser:
         line_labels = ['$Cl_{Max}$', '$Cl_{Max}$ ⋅ 0.9', '$Cl_{Max}$ ⋅ 0.8', '$Cl_{Max}$ ⋅ 0.7', '$Cl_{Max}$ ⋅ 0.6']  # Define the labels for each line   
         line_colors = [plt.cm.Reds(x) for x in range(256, 128, -(256-128)//(6-1))]
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
-            self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=0.3, linewidth=2)
+            self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=2)
 
     def __del__(self):
         self.csv_file.close()
@@ -265,6 +262,7 @@ class FlightEnvelopeAssessment():
             calc_load_factor_lists.append(calc_load_factor_list)
 
         return velocities, calc_load_factor_lists
+
 
 
 if __name__ == "__main__":
