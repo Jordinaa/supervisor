@@ -34,11 +34,6 @@ class Visualiser:
         self.vertical_acceleration = 0.0
         self.load_factor = 0.0
 
-        self.load_factor_predict = 0.0
-
-        self.previous_filtered_load_factor = None
-        self.weight = .1
-
         self.time_list = []
         self.roll_list = []
         self.pitch_list = []
@@ -47,18 +42,25 @@ class Visualiser:
         self.pitch_rate_list = []
         self.yaw_rate_list = []
         self.velocity_list = []
-        self.vertical_acceleration_list = [0, 0, 0, 0]
+        self.vertical_acceleration_list = []
         self.horizontal_acceleration_list = []
+
         self.cl_list = []
         self.load_factor_list = []
 
         self.velocity_prediction_list = []
         self.load_factor_prediction_list = []
         self.vertical_acceleration_list_prediction = [0, 0]
-        self.horizontal_acceleration_list_prediction = []
-
+        self.horizontal_acceleration_list_prediction = [0, 0]
         self.filteredAz_list = []
+        self.filteredAx_list = []
+
         self.filteredAz = 0.0
+        self.filteredAx = 0.0
+        self.load_factor_predict = 0.0
+        self.previous_filtered_load_factor = None
+        self.weight = .1
+        self.velocity_weight = 2
 
         self.csv_path = "/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
@@ -85,8 +87,8 @@ class Visualiser:
         self.static_plot(static_velocity, static_load_factors)
 
     def velocity_cb(self, msg):
-        self.velocity = msg.groundspeed
-        self.velocity_list.append(self.velocity)
+        self.velocity = msg.airspeed
+        self.velocity_list.append(msg.airspeed)
 
     def position_cb(self, msg):
         qx = msg.pose.orientation.x
@@ -127,15 +129,16 @@ class Visualiser:
         self.m4 = msg.value4
 
     def vn_data_publisher(self):
-        start_time = time.time()
         four_floats = FourFloats()
         four_floats.value1 = self.time_list[-1] 
         four_floats.value2 = self.load_factor_list[-1]
-        four_floats.value3 = self.load_factor_prediction_list[-1]
-        # four_floats.value4 = self.vertical_acceleration_list[-1]
+        a, b = self.butter_worth_filter()
+        self.filteredAz, self.filteredAx = self.filter_signals(a, b)
+        four_floats.value3 = self.filteredAx
         four_floats.value4 = self.filteredAz
-        # print(f'filteredAz: {four_floats.value4}')
         self.pub.publish(four_floats)
+        self.vertical_acceleration_list_prediction.append(self.filteredAz)
+        self.horizontal_acceleration_list_prediction.append(self.filteredAx)
 
     def calc_load_factor(self):
         load_factor = self.vertical_acceleration / bounds.g
@@ -143,39 +146,52 @@ class Visualiser:
         self.load_factor = load_factor
         return load_factor
 
+    def poly_predict(self, xlist, ylist, samplesize):
+        coeffs = np.polyfit(xlist, ylist, samplesize)
+        y_new = np.polyval(coeffs, coeffs)
+        return coeffs
+    
+    def predict_velocity(self):
+        v_pred = self.velocity + self.filteredAx * self.velocity_weight
+        self.velocity_prediction_list.append(v_pred)
+        # v_pred = self.velocity + self.horizontal_acceleration * (self.time_list[-1] - self.time_list[-2])
+        return v_pred
+
     def predict_load_factor(self):
-        load_factor_predict = self.predict_next_load_factor(self.vertical_acceleration_list, self.time_list)
-        self.load_factor_prediction_list.append(load_factor_predict)
-        self.load_factor_predict = load_factor_predict
-        return load_factor_predict
+        pass
 
-    def predict_next_load_factor(self, velocity_list, time_list):
-        v_final = velocity_list[-1]
-        v_initial = velocity_list[-2]
-        dt = time_list[-1] - time_list[-2]
-        delta_v = (v_final - v_initial) / dt
-        prediction = delta_v / bounds.g
-        return prediction
+    # def predict_load_factor(self):
+    #     load_factor_predict = self.predict_next_load_factor(self.vertical_acceleration_list, self.time_list)
+    #     self.load_factor_prediction_list.append(load_factor_predict)
+    #     self.load_factor_predict = load_factor_predict
+    #     return load_factor_predict
 
-    def first_order_filter(self, raw_value, previous_filtered_value, weight):
-        if previous_filtered_value is None:
-            filtered_value = raw_value
-        else:
-            filtered_value = weight * raw_value + (1 - weight) * previous_filtered_value
-        return filtered_value
+    # def predict_next_load_factor(self, velocity_list, time_list):
+    #     v_final = velocity_list[-1]
+    #     v_initial = velocity_list[-2]
+    #     dt = time_list[-1] - time_list[-2]
+    #     delta_v = (v_final - v_initial) / dt
+    #     prediction = delta_v / bounds.g
+    #     return prediction
+
+    # def first_order_filter(self, raw_value, previous_filtered_value, weight):
+    #     if previous_filtered_value is None:
+    #         filtered_value = raw_value
+    #     else:
+    #         filtered_value = weight * raw_value + (1 - weight) * previous_filtered_value
+    #     return filtered_value
 
     # butter worth difference equation
-    # def butter_worth_filter(self, acceleration_list):
     def filter_signals(self, a, b):
-        # print(f'{b[0]} | {self.vertical_acceleration_list[-1]} | {b[1]} | {self.vertical_acceleration_list[-2]} | {b[2]} | {self.vertical_acceleration_list[-3]} | {a[1]} | {self.vertical_acceleration_list_prediction[-1]} | {a[2]} | {self.vertical_acceleration_list_prediction[-2]}')
-        # z = b[0] * self.vertical_acceleration_list[-1] + b[1] * self.vertical_acceleration_list[-2] + b[2] * self.vertical_acceleration_list[-3] - (a[1] * self.vertical_acceleration_list_prediction[-1] + a[2] * self.vertical_acceleration_list_prediction[-2])
-        print(f'{b[0]} | {self.vertical_acceleration_list[-1]} | {b[1]} | {self.vertical_acceleration_list[-2]} | {a[1]} | {self.vertical_acceleration_list_prediction[-1]}')
-        z = b[0] * self.vertical_acceleration_list[-1] + b[1] * self.vertical_acceleration_list[-2] - (a[1] * self.vertical_acceleration_list_prediction[-1])
-        print(f'this is {z}')
-        self.vertical_acceleration_list_prediction.append(z)
-        print(f'this is verti(0) {self.vertical_acceleration_list_prediction[0]}')
-        self.vertical_acceleration_list_prediction.pop(0)
-        return z
+        z_pred = b[0] * self.vertical_acceleration_list[-1] + b[1] * self.vertical_acceleration_list[-2] - (a[1] * self.vertical_acceleration_list_prediction[-1])
+        x_pred = b[0] * self.horizontal_acceleration_list[-1] + b[1] * self.horizontal_acceleration_list[-2] - (a[1] * self.horizontal_acceleration_list_prediction[-1])
+        # print(f"z_pred: {z_pred}")
+        # print(f"x_pred: {x_pred}")
+        self.filteredAz = z_pred
+        self.filteredAx = x_pred
+        self.vertical_acceleration_list_prediction.append(z_pred)
+        self.horizontal_acceleration_list_prediction.append(x_pred)
+        return z_pred, x_pred
 
     def butter_worth_filter(self):
         fs = 50
@@ -183,23 +199,9 @@ class Visualiser:
         nyt = .5 * fs
         order = 1
         normalized_cutoff = cutoff / nyt
-        # b = [0.204, 0.204]
-        # a = [1, -0.591]
         b, a = signal.butter(order, normalized_cutoff, btype='low', analog=False)
-        print(f'b: {b}')
-        print(f'a: {a}')
-
-        self.filteredAz = self.filter_signals(a, b)
-        print(f'filteredAz inside that butter: {self.filteredAz}')
-        # filtered_signal = signal.filtfilt(b, a, self.vertical_acceleration_list)
-        # self.filteredAz_list.append(filtered_signal)
-        # print(len(self.vertical_acceleration_list))
-        # print(len(filtered_signal))
-        # for i in range(0, len(filtered_signal)):
-        #     self.filteredAz = filtered_signal[i]
-
-        # return filtered_signal
-
+        # filtered_signals = self.filter_signals(a, b)
+        return a, b
 
     def plot_init_vn(self):
         self.ax.set_xlim(left=0, right=25)
@@ -215,38 +217,30 @@ class Visualiser:
         self.ax.legend(fontsize='small')
         return self.lines
 
-
     def update_plot(self, frame):
-        for lol in range(0, 10):
-            load_factor = self.calc_load_factor()
-            self.load_factor_list.append(load_factor)
-
-            next_load_factor = self.predict_next_load_factor(self.velocity_list, self.time_list)
-            
-            filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
-            self.previous_filtered_load_factor = filtered_load_factor
-            
-            self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
-            self.vn_data_publisher()
-
-        self.butter_worth_filter()
-
-
-        # self.butter_worth_filter(self.filteredAz)
-
         self.thinned_velocity_list = self.velocity_list[-10:]
-        self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
         self.thinned_load_factor_list = self.load_factor_list[-10:]
+        self.thinned_velocity_prediction_list = self.velocity_prediction_list[-10:]
         self.thinned_load_factor_prediction_list = self.load_factor_prediction_list[-10:]
-        self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
-        # self.lines[0].set_data(self.velocity_list[-10:], self.load_factor_list[-10:])
-        self.lines[1].set_data(self.thinned_velocity_list[-10:], self.load_factor_prediction_list[-10:])
 
-        print(f'true n:            {load_factor:.4}')
-        print(f'predicted n:       {next_load_factor:.4}')
-        print(f'filtered n:        {filtered_load_factor:.4}')
-        print(f'filtered n + true: {filtered_load_factor + self.load_factor:.4}')
-        return self.lines
+        load_factor = self.calc_load_factor()
+        self.load_factor_list.append(load_factor)
+        # next_load_factor = self.predict_next_load_factor(self.velocity_list, self.time_list)
+        # filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
+        # self.previous_filtered_load_factor = filtered_load_factor
+        # self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
+
+
+        self.predict_velocity()
+        self.vn_data_publisher()
+
+        if len(self.thinned_velocity_list) == len(self.thinned_velocity_prediction_list):
+            self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
+            self.lines[1].set_data(self.thinned_velocity_prediction_list, self.thinned_load_factor_prediction_list)
+            return self.lines
+        else:
+            print("Getting current data")
+            return self.lines
  
     def static_plot(self, static_velocity, static_load_factors):        
         line_styles = ['-', '-', '-', '-', '-']  # Define different line styles for each weight
@@ -255,8 +249,6 @@ class Visualiser:
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
             self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=2)
 
-    # def __del__(self):
-    #     self.csv_file.close()
 
 
 
