@@ -141,45 +141,33 @@ class Visualiser:
         self.horizontal_acceleration_list_prediction.append(self.filteredAx)
 
     def calc_load_factor(self):
-        load_factor = self.vertical_acceleration / bounds.g
+        load_factor = self.filteredAz / bounds.g
         self.load_factor_list.append(load_factor)
         self.load_factor = load_factor
         return load_factor
 
-    def poly_predict(self, xlist, ylist, samplesize):
+    def poly_predict(self, xlist, ylist, samplesize, x):
         coeffs = np.polyfit(xlist, ylist, samplesize)
-        y_new = np.polyval(coeffs, coeffs)
-        return coeffs
+        y_new = np.polyval(coeffs, x)
+        return y_new
+
+    def predict_next_load_factor(self):
+        next_time_step = len(self.load_factor_list)
+        predicted_load_factor = self.poly_predict(xlist=list(range(next_time_step)), ylist=self.load_factor_list, samplesize=min(3, len(self.load_factor_list) - 1), x=next_time_step)
+        self.load_factor_prediction_list.append(predicted_load_factor)
+        return predicted_load_factor
+
+
+    # def poly_predict(self, xlist, ylist, samplesize):
+    #     coeffs = np.polyfit(xlist, ylist, samplesize)
+    #     y_new = np.polyval(coeffs, )
+    #     return coeffs
     
     def predict_velocity(self):
         v_pred = self.velocity + self.filteredAx * self.velocity_weight
         self.velocity_prediction_list.append(v_pred)
         # v_pred = self.velocity + self.horizontal_acceleration * (self.time_list[-1] - self.time_list[-2])
         return v_pred
-
-    def predict_load_factor(self):
-        pass
-
-    # def predict_load_factor(self):
-    #     load_factor_predict = self.predict_next_load_factor(self.vertical_acceleration_list, self.time_list)
-    #     self.load_factor_prediction_list.append(load_factor_predict)
-    #     self.load_factor_predict = load_factor_predict
-    #     return load_factor_predict
-
-    # def predict_next_load_factor(self, velocity_list, time_list):
-    #     v_final = velocity_list[-1]
-    #     v_initial = velocity_list[-2]
-    #     dt = time_list[-1] - time_list[-2]
-    #     delta_v = (v_final - v_initial) / dt
-    #     prediction = delta_v / bounds.g
-    #     return prediction
-
-    # def first_order_filter(self, raw_value, previous_filtered_value, weight):
-    #     if previous_filtered_value is None:
-    #         filtered_value = raw_value
-    #     else:
-    #         filtered_value = weight * raw_value + (1 - weight) * previous_filtered_value
-    #     return filtered_value
 
     # butter worth difference equation
     def filter_signals(self, a, b):
@@ -225,12 +213,8 @@ class Visualiser:
 
         load_factor = self.calc_load_factor()
         self.load_factor_list.append(load_factor)
-        # next_load_factor = self.predict_next_load_factor(self.velocity_list, self.time_list)
-        # filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
-        # self.previous_filtered_load_factor = filtered_load_factor
-        # self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
 
-
+        self.predict_next_load_factor()
         self.predict_velocity()
         self.vn_data_publisher()
 
@@ -247,7 +231,7 @@ class Visualiser:
         line_labels = ['$Cl_{Max}$', '$Cl_{Max}$ ⋅ 0.9', '$Cl_{Max}$ ⋅ 0.8', '$Cl_{Max}$ ⋅ 0.7', '$Cl_{Max}$ ⋅ 0.6']  # Define the labels for each line   
         line_colors = [plt.cm.Reds(x) for x in range(256, 128, -(256-128)//(6-1))]
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
-            self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=2)
+            self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=1)
 
 
 
