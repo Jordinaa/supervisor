@@ -6,6 +6,7 @@ from offboard_py.msg import FourFloats  # Import your custom message type
 from flight_envelope_assessment import Visualiser
 
 
+
 def custom_publisher(msg1, msg2, msg3, msg4):
     start_time = time.time()
     rospy.init_node('logger', anonymous=True)
@@ -24,9 +25,6 @@ def callback(msg):
 def subscriber_ff():
     rospy.init_node('four_floats_subscriber', anonymous=True)
     rospy.Subscriber('four_floats_topic', FourFloats, callback)
-
-
-
 
 if __name__ == '__main__':
     rospy.init_node('logging')

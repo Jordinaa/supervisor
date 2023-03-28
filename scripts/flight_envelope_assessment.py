@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+import time
+import csv
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import seaborn as sns
 import numpy as np
-import time
-import csv
+from scipy import signal
 
 import rospy
 from geometry_msgs.msg import PoseStamped
@@ -29,9 +30,12 @@ class Visualiser:
         self.pitch = 0.0
         self.yaw = 0.0
         self.velocity = 0.0
+        self.horizontal_acceleration = 0.0
         self.vertical_acceleration = 0.0
         self.load_factor = 0.0
+
         self.load_factor_predict = 0.0
+
         self.previous_filtered_load_factor = None
         self.weight = .1
 
@@ -43,11 +47,18 @@ class Visualiser:
         self.pitch_rate_list = []
         self.yaw_rate_list = []
         self.velocity_list = []
-        self.vertical_acceleration_list = []
-
+        self.vertical_acceleration_list = [0, 0, 0, 0]
+        self.horizontal_acceleration_list = []
         self.cl_list = []
         self.load_factor_list = []
+
+        self.velocity_prediction_list = []
         self.load_factor_prediction_list = []
+        self.vertical_acceleration_list_prediction = [0, 0]
+        self.horizontal_acceleration_list_prediction = []
+
+        self.filteredAz_list = []
+        self.filteredAz = 0.0
 
         self.csv_path = "/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
@@ -56,11 +67,10 @@ class Visualiser:
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
-        subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.az_callback)
+        subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.acceleration_callback)
         subRates = rospy.Subscriber('mavros/imu/data', Imu, self.rates_cb)
         subState = rospy.Subscriber('mavros/state', State, callback=self.state_cb)
         SubVNData = rospy.Subscriber('vn_data_sub', FourFloats, callback=self.vn_data_callback)
-
         self.pub = rospy.Publisher('vn_data_pub', FourFloats, queue_size=10)
 
         sns.set_style('whitegrid')
@@ -96,10 +106,15 @@ class Visualiser:
         self.pitch_rate_list.append(self.pitch_rate)
         self.yaw_rate_list.append(self.yaw_rate)
 
-    def az_callback(self, msg):
+    def acceleration_callback(self, msg):
+        ax = msg.linear_acceleration.x
+        self.horizontal_acceleration = ax
+        self.horizontal_acceleration_list.append(ax)
+
         az = msg.linear_acceleration.z
         self.vertical_acceleration = az
-        self.vertical_acceleration_list.append(self.vertical_acceleration)
+        self.vertical_acceleration_list.append(az)
+
         self.time_list.append(time.time() - self.start_time)
     
     def state_cb(self, msg):
@@ -117,7 +132,9 @@ class Visualiser:
         four_floats.value1 = self.time_list[-1] 
         four_floats.value2 = self.load_factor_list[-1]
         four_floats.value3 = self.load_factor_prediction_list[-1]
-        four_floats.value4 = self.vertical_acceleration_list[-1]
+        # four_floats.value4 = self.vertical_acceleration_list[-1]
+        four_floats.value4 = self.filteredAz
+        # print(f'filteredAz: {four_floats.value4}')
         self.pub.publish(four_floats)
 
     def calc_load_factor(self):
@@ -125,6 +142,12 @@ class Visualiser:
         self.load_factor_list.append(load_factor)
         self.load_factor = load_factor
         return load_factor
+
+    def predict_load_factor(self):
+        load_factor_predict = self.predict_next_load_factor(self.vertical_acceleration_list, self.time_list)
+        self.load_factor_prediction_list.append(load_factor_predict)
+        self.load_factor_predict = load_factor_predict
+        return load_factor_predict
 
     def predict_next_load_factor(self, velocity_list, time_list):
         v_final = velocity_list[-1]
@@ -140,6 +163,43 @@ class Visualiser:
         else:
             filtered_value = weight * raw_value + (1 - weight) * previous_filtered_value
         return filtered_value
+
+    # butter worth difference equation
+    # def butter_worth_filter(self, acceleration_list):
+    def filter_signals(self, a, b):
+        # print(f'{b[0]} | {self.vertical_acceleration_list[-1]} | {b[1]} | {self.vertical_acceleration_list[-2]} | {b[2]} | {self.vertical_acceleration_list[-3]} | {a[1]} | {self.vertical_acceleration_list_prediction[-1]} | {a[2]} | {self.vertical_acceleration_list_prediction[-2]}')
+        # z = b[0] * self.vertical_acceleration_list[-1] + b[1] * self.vertical_acceleration_list[-2] + b[2] * self.vertical_acceleration_list[-3] - (a[1] * self.vertical_acceleration_list_prediction[-1] + a[2] * self.vertical_acceleration_list_prediction[-2])
+        print(f'{b[0]} | {self.vertical_acceleration_list[-1]} | {b[1]} | {self.vertical_acceleration_list[-2]} | {a[1]} | {self.vertical_acceleration_list_prediction[-1]}')
+        z = b[0] * self.vertical_acceleration_list[-1] + b[1] * self.vertical_acceleration_list[-2] - (a[1] * self.vertical_acceleration_list_prediction[-1])
+        print(f'this is {z}')
+        self.vertical_acceleration_list_prediction.append(z)
+        print(f'this is verti(0) {self.vertical_acceleration_list_prediction[0]}')
+        self.vertical_acceleration_list_prediction.pop(0)
+        return z
+
+    def butter_worth_filter(self):
+        fs = 50
+        cutoff = 2.5
+        nyt = .5 * fs
+        order = 1
+        normalized_cutoff = cutoff / nyt
+        # b = [0.204, 0.204]
+        # a = [1, -0.591]
+        b, a = signal.butter(order, normalized_cutoff, btype='low', analog=False)
+        print(f'b: {b}')
+        print(f'a: {a}')
+
+        self.filteredAz = self.filter_signals(a, b)
+        print(f'filteredAz inside that butter: {self.filteredAz}')
+        # filtered_signal = signal.filtfilt(b, a, self.vertical_acceleration_list)
+        # self.filteredAz_list.append(filtered_signal)
+        # print(len(self.vertical_acceleration_list))
+        # print(len(filtered_signal))
+        # for i in range(0, len(filtered_signal)):
+        #     self.filteredAz = filtered_signal[i]
+
+        # return filtered_signal
+
 
     def plot_init_vn(self):
         self.ax.set_xlim(left=0, right=25)
@@ -160,25 +220,32 @@ class Visualiser:
         for lol in range(0, 10):
             load_factor = self.calc_load_factor()
             self.load_factor_list.append(load_factor)
+
             next_load_factor = self.predict_next_load_factor(self.velocity_list, self.time_list)
+            
             filtered_load_factor = self.first_order_filter(next_load_factor, self.previous_filtered_load_factor, self.weight)
             self.previous_filtered_load_factor = filtered_load_factor
+            
             self.load_factor_prediction_list.append(filtered_load_factor + self.load_factor)
             self.vn_data_publisher()
+
+        self.butter_worth_filter()
+
+
+        # self.butter_worth_filter(self.filteredAz)
+
         self.thinned_velocity_list = self.velocity_list[-10:]
         self.thinned_vertical_acceleration_list = self.vertical_acceleration_list[-10:]
-
         self.thinned_load_factor_list = self.load_factor_list[-10:]
         self.thinned_load_factor_prediction_list = self.load_factor_prediction_list[-10:]
-
         self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
+        # self.lines[0].set_data(self.velocity_list[-10:], self.load_factor_list[-10:])
         self.lines[1].set_data(self.thinned_velocity_list[-10:], self.load_factor_prediction_list[-10:])
 
         print(f'true n:            {load_factor:.4}')
         print(f'predicted n:       {next_load_factor:.4}')
         print(f'filtered n:        {filtered_load_factor:.4}')
         print(f'filtered n + true: {filtered_load_factor + self.load_factor:.4}')
-        print(f"difference:        {self.thinned_load_factor_prediction_list[-1] - self.thinned_load_factor_list[-1]:.4}")
         return self.lines
  
     def static_plot(self, static_velocity, static_load_factors):        
@@ -188,8 +255,8 @@ class Visualiser:
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
             self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=2)
 
-    def __del__(self):
-        self.csv_file.close()
+    # def __del__(self):
+    #     self.csv_file.close()
 
 
 
@@ -280,7 +347,7 @@ if __name__ == "__main__":
             plt.show(block=True)
             rate.sleep()
         plt.close('all')
-        vis.__del__()
+        # vis.__del__()
 
     except KeyboardInterrupt:
         print("Exiting Flight Envelope Assessment")
