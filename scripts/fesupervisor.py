@@ -12,6 +12,7 @@ from mavros_msgs.msg import State, AttitudeTarget
 from mavros_msgs.srv import CommandBool, CommandBoolRequest, SetMode, SetModeRequest
 from std_msgs.msg import Header
 
+import config
 from helper import quaternionToEuler, eulerToQuaternion
 from assessment import FlightEnvelopeAssessment
 
@@ -50,6 +51,8 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
         self.bounds = FlightEnvelopeAssessment()
         self.bounds.__init__()
+        self.bounds.supervisor_bounds
+        print(f'bounds: {self.bounds.supervisor_bounds}')
 
     def set_attitude(self):
         # Set the attitude of the drone by changing the roll angle
@@ -107,8 +110,19 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         roll_deg = np.rad2deg(self.bounds.roll)
         return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
     
-    def check_bounds(self):
-        pass
+    def check_bounds(self, predicted_velocity, predicted_load_factor):
+        bounds = self.bounds.supervisor_bounds
+        for bound_velocity, bound_load_factor in bounds:
+            if predicted_velocity < bound_velocity[0] or predicted_velocity > bound_velocity[-1]:
+                print(f"Velocity exceeded: {predicted_velocity}")
+                return (config.SLF_PHI, config.SLF_THETA, config.SLF_PSI, config.SLF_P_RATE, config.SLF_Q_RATE, config.SLF_R_RATE, config.SLF_AIRSPEED)
+
+            if predicted_load_factor < bound_load_factor[0] or predicted_load_factor > bound_load_factor[-1]:
+                print(f"Load factor exceeded: {predicted_load_factor}")
+                return (config.SLF_PHI, config.SLF_THETA, config.SLF_PSI, config.SLF_P_RATE, config.SLF_Q_RATE, config.SLF_R_RATE, config.SLF_AIRSPEED)
+
+        # If within bounds, return None
+        return None
 
     def run(self):
         last_req = rospy.Time.now()
@@ -125,14 +139,15 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 last_req = rospy.Time.now()
     
             if current_state.mode == self.mode:
-                if self.out_of_roll_bounds() == True:
-                    while np.rad2deg(self.bounds.roll) > 1:
-                        self.flag = True
-                        self.set_attitude()
-                        self.rate.sleep()
-                else:
-                    self.flag = False
-                    self.set_attitude()
+                print('in loop')
+                # if self.out_of_roll_bounds() == True:
+                #     while np.rad2deg(self.bounds.roll) > 1:
+                #         self.flag = True
+                #         self.set_attitude()
+                #         self.rate.sleep()
+                # else:
+                #     self.flag = False
+                #     self.set_attitude()
 
             last_req = rospy.Time.now()
             self.rate.sleep()

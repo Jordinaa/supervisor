@@ -35,6 +35,8 @@ class FlightEnvelopeAssessment():
         self.mass = config.MASS
         self.g = config.G
 
+        self.supervisor_bounds = None
+
         self.coefficient_lift = 0.0
         self.dynamic_pressure = 0.01
         self.lift = 0.0
@@ -110,7 +112,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.load_factor = 0.0
         self.current_state = None
         self.mode = None
-        
+
         self.cb_time = 0.0
         self.cb_true_n = 0.0
         self.cb_true_v = 0.0
@@ -182,7 +184,8 @@ class Visualiser(FlightEnvelopeAssessment):
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
 
         static_velocity, static_load_factors = self.calc_load_factor_vs_velocity_static()
-        self.static_plot(static_velocity, static_load_factors)
+        assessment = FlightEnvelopeAssessment()
+        assessment.supervisor_bounds = self.static_plot(static_velocity, static_load_factors)
 
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
@@ -339,12 +342,15 @@ class Visualiser(FlightEnvelopeAssessment):
             print("Getting current data")
             return self.lines
  
-    def static_plot(self, static_velocity, static_load_factors):        
+    def static_plot(self, static_velocity, static_load_factors):
+        bounds = []
         line_styles = ['-', '-', '-', '-', '-']  # Define different line styles for each weight
         line_labels = ['$Cl_{Max}$', '$Cl_{Max}$ ⋅ 0.9', '$Cl_{Max}$ ⋅ 0.8', '$Cl_{Max}$ ⋅ 0.7', '$Cl_{Max}$ ⋅ 0.6']  # Define the labels for each line   
         line_colors = [plt.cm.Reds(x) for x in range(256, 128, -(256-128)//(6-1))]
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
             self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=1)
+            bounds.append((static_velocity, load_factor))
+        return bounds
 
 if __name__ == "__main__":
 

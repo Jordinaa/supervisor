@@ -12,7 +12,11 @@ G = 9.81
 
 # Steady level flight data 
 # returns to these parameters if bound is broken
-slf_roll = 0
-slf_pitch = -9
-slf_yaw = 2.8
-slf_airspeed = 17.8
+SLF_PHI = 0
+SLF_THETA = -9
+SLF_PSI = 2.8
+SLF_P_RATE = 0.0
+SLF_Q_RATE = 0.0
+SLF_R_RATE = 0.0
+
+SLF_AIRSPEED = 17.8
