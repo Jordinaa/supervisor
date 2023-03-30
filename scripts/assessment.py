@@ -12,19 +12,89 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import VFR_HUD, State
 from sensor_msgs.msg import Imu
-from offboard_py.msg import FourFloats
+from supervisor.msg import DataLogger
 
 import config
-from helper_functions import quaternionToEuler
-from data_logger import DataLogger
+from helper import quaternionToEuler
 
-class Visualiser:
+class FlightEnvelopeAssessment():
+    '''
+        The Flight Envelope Assessment class takes in a models data and it will define the bounds/limits
+        of the flight envelope which will then be fed into the supervisor which will set the bounds 
+        of the aircraft
+    '''
+    def __init__(self):
+        self.alpha0 = config.A0
+        self.cla = config.CLA
+        self.cla_stall = config.CLA_STALL
+        self.cda = config.CDA
+        self.cda_stall = config.CDA_STALL
+        self.alpha_stall = config.ALPHA_STALL
+        self.area = config.WINGAREA
+        self.rho = config.AIR_DENSITY
+        self.mass = config.MASS
+        self.g = config.G
+
+        self.coefficient_lift = 0.0
+        self.dynamic_pressure = 0.01
+        self.lift = 0.0
+        self.velocity = 0.0
+        self.load_factor = 0.0
+        self.vStall = 0.0
+
+        self.coefficient_lift_list = []
+        
+        self.angleList = np.arange(0, self.alpha_stall, 0.01 * np.pi/180)
+        self.coefficient_lift_list = [self.calc_cl(angle) for angle in self.angleList]
+        self.clMax = max(self.coefficient_lift_list)
+        self.clMaxWeights = [.9, .8, .7, .6]
+        self.vStall = self.calc_v_stall
+        self.angleListDegrees = np.rad2deg(self.angleList)
+
+    def calc_cl(self, angle_of_attack):
+        clift = self.cla * (angle_of_attack - self.alpha0)
+        # print(f"Coeff. Lift: {clift}")
+        return clift
+
+    def calc_lift(self, velocity, AoA):
+        lift = (self.calc_cl(AoA) * (self.rho * (velocity**2) * .5) * self.area)
+        return lift
+    
+    def calc_v_stall(self):
+        self.vStall = np.sqrt((2 * self.mass * self.g) / (self.rho * self.area * self.clMax))
+        return self.vStall
+
+    def calc_load_factor_vs_velocity_static(self):
+        velocities = np.linspace(0, 100, 250)
+        calc_load_factor_lists = []
+        calc_load_factor_list = []
+
+        for v in velocities:
+            self.dynamic_pressure = 0.5 * self.rho * v ** 2
+            self.lift = self.clMax * self.area * self.dynamic_pressure
+            self.load_factor = self.lift / (self.mass * self.g)
+            calc_load_factor_list.append(self.load_factor)
+        calc_load_factor_lists.append(calc_load_factor_list)
+        
+        for weight in self.clMaxWeights:
+            calc_load_factor_list = []
+            for v in velocities:
+                self.dynamic_pressure = 0.5 * self.rho * v ** 2
+                self.lift = self.clMax * weight * self.area * self.dynamic_pressure
+                self.load_factor = self.lift / (self.mass * self.g)
+                calc_load_factor_list.append(self.load_factor)
+            calc_load_factor_lists.append(calc_load_factor_list)
+
+        return velocities, calc_load_factor_lists
+
+
+class Visualiser(FlightEnvelopeAssessment):
     '''
     The Visualizer class plots the rolly, pitch, yaw data live and overlays a static plot to compare real-time
     data vs. bounds
     '''
     def __init__(self):
-        self.bounds = FlightEnvelopeAssessment(config.A0, config.CLA, config.CDA, config.ALPHA_STALL, config.WINGAREA, config.AIR_DENSITY, config.MASS, config.G, config.CLA_STALL, config.CDA_STALL)
+        super().__init__()
         self.start_time = time.time()
         self.roll = 0.0
         self.pitch = 0.0
@@ -33,6 +103,14 @@ class Visualiser:
         self.horizontal_acceleration = 0.0
         self.vertical_acceleration = 0.0
         self.load_factor = 0.0
+
+        self.cb_time = 0.0
+        self.cb_true_n = 0.0
+        self.cb_true_v = 0.0
+        self.cb_predict_n = 0.0
+        self.cb_predict_v = 0.0
+        self.cb_key_event = 0.0
+        self.cb_key_event_time = 0.0
 
         self.time_list = []
         self.roll_list = []
@@ -62,7 +140,7 @@ class Visualiser:
         self.weight = .1
         self.velocity_weight = 2
 
-        self.csv_path = "/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv"
+        self.csv_path = "/home/taranto/catkin_ws/src/supervisor/data/drone_data.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(['time', 'load_factor', 'load_factor_predict', 'accelerationZ'])
@@ -72,8 +150,8 @@ class Visualiser:
         subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.acceleration_callback)
         subRates = rospy.Subscriber('mavros/imu/data', Imu, self.rates_cb)
         subState = rospy.Subscriber('mavros/state', State, callback=self.state_cb)
-        SubVNData = rospy.Subscriber('vn_data_sub', FourFloats, callback=self.vn_data_callback)
-        self.pub = rospy.Publisher('vn_data_pub', FourFloats, queue_size=10)
+        subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
+        self.pub = rospy.Publisher('DataLogger', DataLogger, queue_size=10)
 
         sns.set_style('whitegrid')
         sns.set_palette('colorblind')
@@ -83,7 +161,7 @@ class Visualiser:
         self.labels = ['$n_{t}$', '$n_{p}$']
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
 
-        static_velocity, static_load_factors = bounds.calc_load_factor_vs_velocity_static()
+        static_velocity, static_load_factors = self.calc_load_factor_vs_velocity_static()
         self.static_plot(static_velocity, static_load_factors)
 
     def velocity_cb(self, msg):
@@ -122,26 +200,31 @@ class Visualiser:
     def state_cb(self, msg):
         self.current_state = msg
 
-    def vn_data_callback(self, msg):
-        self.m1 = msg.value1
-        self.m2 = msg.value2
-        self.m3 = msg.value3
-        self.m4 = msg.value4
+    def data_logger_callback(self, msg):
+        self.cb_time = msg.time
+        self.cb_true_n = msg.true_n
+        self.cb_true_v = msg.true_velocity
+        self.cb_predict_n = msg.predicted_n
+        self.cb_predict_v = msg.predicted_velocity
+        self.cb_key_event = msg.key_event
+        self.cb_key_event_time = msg.key_event_time
 
-    def vn_data_publisher(self):
-        four_floats = FourFloats()
-        four_floats.value1 = self.time_list[-1] 
-        four_floats.value2 = self.load_factor_list[-1]
+    def data_logger_publisher(self):
+        data_logger = DataLogger()
+        data_logger.time = self.time_list[-1]
+        data_logger.true_n = self.load_factor_list[-1]
+        data_logger.true_velocity = self.velocity_list[-1]
         a, b = self.butter_worth_filter()
         self.filteredAz, self.filteredAx = self.filter_signals(a, b)
-        four_floats.value3 = self.filteredAx
-        four_floats.value4 = self.filteredAz
-        self.pub.publish(four_floats)
+        data_logger.predicted_n = self.filteredAx
+        data_logger.predicted_velocity = self.filteredAz
+        
+        self.pub.publish(data_logger)
         self.vertical_acceleration_list_prediction.append(self.filteredAz)
         self.horizontal_acceleration_list_prediction.append(self.filteredAx)
 
     def calc_load_factor(self):
-        load_factor = self.filteredAz / bounds.g
+        load_factor = self.filteredAz / self.g
         self.load_factor_list.append(load_factor)
         self.load_factor = load_factor
         return load_factor
@@ -216,7 +299,7 @@ class Visualiser:
 
         self.predict_next_load_factor()
         self.predict_velocity()
-        self.vn_data_publisher()
+        self.data_logger_publisher()
 
         if len(self.thinned_velocity_list) == len(self.thinned_velocity_prediction_list):
             self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
@@ -236,75 +319,7 @@ class Visualiser:
 
 
 
-class FlightEnvelopeAssessment():
-    '''
-        The Flight Envelope Assessment class takes in a models data and it will define the bounds/limits
-        of the flight envelope which will then be fed into the supervisor which will set the bounds 
-        of the aircraft
-    '''
-    def __init__(self, A0, CLA, CDA, ALPHA_STALL, WINGAREA, AIR_DENSITY, MASS, G, CLA_STALL, CDA_STALL):
-        self.alpha0 = A0
-        self.cla = CLA
-        self.cla_stall = CLA_STALL
-        self.cda = CDA
-        self.cda_stall = CDA_STALL
-        self.alpha_stall = ALPHA_STALL
-        self.area = WINGAREA
-        self.rho = AIR_DENSITY
-        self.mass = MASS
-        self.g = G
 
-        self.coefficient_lift = 0.0
-        self.dynamic_pressure = 0.01
-        self.lift = 0.0
-        self.velocity = 0.0
-        self.load_factor = 0.0
-        self.vStall = 0.0
-
-        self.coefficient_lift_list = []
-        
-        self.angleList = np.arange(0, ALPHA_STALL, 0.01 * np.pi/180)
-        self.coefficient_lift_list = [self.calc_cl(angle) for angle in self.angleList]
-        self.clMax = max(self.coefficient_lift_list)
-        self.clMaxWeights = [.9, .8, .7, .6]
-        self.vStall = self.calc_v_stall
-        self.angleListDegrees = np.rad2deg(self.angleList)
-
-    def calc_cl(self, angle_of_attack):
-        clift = self.cla * (angle_of_attack - self.alpha0)
-        # print(f"Coeff. Lift: {clift}")
-        return clift
-
-    def calc_lift(self, velocity, AoA):
-        lift = (self.calc_cl(AoA) * (self.rho * (velocity**2) * .5) * self.area)
-        return lift
-    
-    def calc_v_stall(self):
-        self.vStall = np.sqrt((2 * self.mass * self.g) / (self.rho * self.area * self.clMax))
-        return self.vStall
-
-    def calc_load_factor_vs_velocity_static(self):
-        velocities = np.linspace(0, 100, 250)
-        calc_load_factor_lists = []
-        calc_load_factor_list = []
-
-        for v in velocities:
-            self.dynamic_pressure = 0.5 * self.rho * v ** 2
-            self.lift = self.clMax * self.area * self.dynamic_pressure
-            self.load_factor = self.lift / (self.mass * self.g)
-            calc_load_factor_list.append(self.load_factor)
-        calc_load_factor_lists.append(calc_load_factor_list)
-        
-        for weight in self.clMaxWeights:
-            calc_load_factor_list = []
-            for v in velocities:
-                self.dynamic_pressure = 0.5 * self.rho * v ** 2
-                self.lift = self.clMax * weight * self.area * self.dynamic_pressure
-                self.load_factor = self.lift / (self.mass * self.g)
-                calc_load_factor_list.append(self.load_factor)
-            calc_load_factor_lists.append(calc_load_factor_list)
-
-        return velocities, calc_load_factor_lists
 
 
 
@@ -314,7 +329,7 @@ if __name__ == "__main__":
     plt.close("all")
     rate = rospy.Rate(20)
     time_zero = rospy.get_time()
-    bounds = FlightEnvelopeAssessment(config.A0, config.CLA, config.CDA, config.ALPHA_STALL, config.WINGAREA, config.AIR_DENSITY, config.MASS, config.G, config.CLA_STALL, config.CDA_STALL)
+    bounds = FlightEnvelopeAssessment()
     vis = Visualiser()
 
     try:

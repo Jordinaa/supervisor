@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from helper_functions import quaternionToEuler
+from helper import quaternionToEuler
 import time 
 import csv
 import numpy as np
@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import rospy
 from geometry_msgs.msg import PoseStamped
-from offboard_py.msg import FourFloats
+from supervisor.msg import DataLogger
 
 class DataLogger():
     """
@@ -23,7 +23,7 @@ class DataLogger():
         self.roll = None
         self.pitch = None
         self.yaw = None
-        self.csv_path = "/home/taranto/catkin_ws/src/offboard_py/data/drone_data.csv"
+        self.csv_path = "/home/taranto/catkin_ws/src/supervisor/data/drone_data.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "n", "n_predict", "Az"])
@@ -77,7 +77,7 @@ class DataLogger():
         plt.ylabel('Angle in degrees')
         plt.show()
 
-    def vn_data_callback(self, msg : FourFloats):
+    def vn_data_callback(self, msg : DataLogger):
         self.m1 = msg.value1
         self.m2 = msg.value2
         self.m3 = msg.value3
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     rospy.loginfo('data logger node started')
     datalogger = DataLogger()
     sub = rospy.Subscriber("mavros/local_position/pose", PoseStamped, callback=datalogger.rpy_cb)
-    SubVNData = rospy.Subscriber('vn_data_pub', FourFloats, callback=datalogger.vn_data_callback)
+    SubVNData = rospy.Subscriber('vn_data_pub', DataLogger, callback=datalogger.vn_data_callback)
 
     rospy.spin()
     datalogger.__del__()

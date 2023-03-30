@@ -12,8 +12,8 @@ from mavros_msgs.msg import State, AttitudeTarget
 from mavros_msgs.srv import CommandBool, CommandBoolRequest, SetMode, SetModeRequest
 from std_msgs.msg import Header
 
-from helper_functions import quaternionToEuler, eulerToQuaternion
-from flight_envelope_assessment import FlightEnvelopeAssessment
+from helper import quaternionToEuler, eulerToQuaternion
+from assessment import FlightEnvelopeAssessment
 
 
 class FlightEnvelopeSupervisor():
