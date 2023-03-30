@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import time
-import csv
+
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import seaborn as sns
@@ -119,14 +119,6 @@ class Visualiser(FlightEnvelopeAssessment):
         self.cb_key_event = 0.0
         self.cb_key_event_time = 0.0
 
-        self.cb_time_list = []
-        self.cb_true_n_list = []
-        self.cb_true_v_list = []
-        self.cb_predict_n_list = []
-        self.cb_predict_v_list = []
-        self.cb_key_event_time_list = []
-        self.cb_key_event_list = []
-
         self.time_list = []
         self.roll_list = []
         self.pitch_list = []
@@ -155,12 +147,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.load_factor_predict = 0.0
         self.previous_filtered_load_factor = None
         self.weight = .1
-        self.velocity_weight = 2
-
-        self.csv_path = "/home/taranto/catkin_ws/src/supervisor/data/drone_data.csv"
-        self.csv_file = open(self.csv_path, "w", newline="")
-        self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(['time', 'load_factor', 'load_factor_predict', 'accelerationZ'])
+        self.velocity_weight = 1.2
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
@@ -170,11 +157,7 @@ class Visualiser(FlightEnvelopeAssessment):
         subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
         self.pub = rospy.Publisher('DataLogger', DataLogger, queue_size=10)
 
-        self.csv_path = "/home/taranto/catkin_ws/src/supervisor/data/drone_data.csv"
-        self.csv_file = open(self.csv_path, "w", newline="")
-        self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(["time", "n_true", "true_velocity" "predicted_n", "predicted_velocity", "key_event", "key_event_time"])
- 
+
         sns.set_style('whitegrid')
         sns.set_palette('colorblind')
         self.fig, (self.ax) = plt.subplots()
@@ -232,18 +215,6 @@ class Visualiser(FlightEnvelopeAssessment):
         self.cb_predict_v = msg.predicted_velocity
         self.cb_key_event = msg.key_event
         self.cb_key_event_time = msg.key_event_time
-
-        self.cb_time_list.append(self.cb_time)
-        self.cb_true_n_list.append(self.cb_true_n)
-        self.cb_true_v_list.append(self.cb_true_v)
-        self.cb_predict_n_list.append(self.cb_predict_n)
-        self.cb_predict_v_list.append(self.cb_predict_v)
-        self.cb_key_event_list.append(self.cb_key_event)
-        self.cb_key_event_time_list.append(self.cb_key_event_time)
-        self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_n_list[-1], self.cb_true_v_list[-1], self.cb_predict_n_list[-1],self.cb_predict_v_list[-1], self.cb_key_event_list[-1], self.cb_key_event_time_list[-1]])
-
-    def close_csv(self):
-        self.csv_file.close()
 
     def data_logger_publisher(self):
         data_logger = DataLogger()
@@ -364,5 +335,4 @@ if __name__ == "__main__":
         ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=50, blit=False)
         plt.show(block=True)
         rate.sleep()
-    vis.close_csv()
     plt.close('all')

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""
- * File: offb_node.py
- * Stack and tested in Gazebo 9 SITL
-"""
+
 import argparse
 import numpy as np
+import csv
+import datetime
 
 import rospy
 from geometry_msgs.msg import PoseStamped
@@ -36,24 +35,34 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.pb_roll = 0.0
         self.pb_pitch = 0.0
         self.pb_yaw = 0.0
-
-        
         self.cb_true_v_sup = None
         self.cb_true_n_sup = None
         self.cb_predict_v_sup = None
         self.cb_predict_n_sup = None
-
         # FE Assessment is created these values will be set equal to whatever those bounds are
         self.flag = False
 
         subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
-
         self.local_position_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
         self.attitude_position_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
         self.setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
 
-        self.supervisor_bounds_val = self.calc_load_factor_vs_velocity_static()
+        self.static_bounds_vel, self.static_bounds_n = self.calc_load_factor_vs_velocity_static()
+        self.num_lines_crossed = 0
+        # CSV
+        self.cb_time_list = []
+        self.cb_true_n_list = []
+        self.cb_true_v_list = []
+        self.cb_predict_n_list = []
+        self.cb_predict_v_list = []
+        self.cb_key_event_time_list = []
+        self.cb_key_event_list = []
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.csv_path = f"/home/taranto/catkin_ws/src/supervisor/data/drone_data_{timestamp}.csv"
+        self.csv_file = open(self.csv_path, "w", newline="")
+        self.csv_writer = csv.writer(self.csv_file)
+        self.csv_writer.writerow(["time", "n_true", "true_velocity" "predicted_n", "predicted_velocity", "bounds_crossed"])
 
     def data_logger_callback(self, msg):
         self.cb_time = msg.time
@@ -62,7 +71,17 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.cb_predict_n_sup = msg.predicted_n
         self.cb_predict_v_sup = msg.predicted_velocity
         self.cb_key_event = msg.key_event
-        self.cb_key_event_time = msg.key_event_time
+
+        self.cb_time_list.append(self.cb_time)
+        self.cb_true_n_list.append(self.cb_true_n_sup)
+        self.cb_true_v_list.append(self.cb_true_v_sup)
+        self.cb_predict_n_list.append(self.cb_predict_n_sup)
+        self.cb_predict_v_list.append(self.cb_predict_v_sup)
+        self.cb_key_event_list.append(self.num_lines_crossed)
+        self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_n_list[-1], self.cb_true_v_list[-1], self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.num_lines_crossed])
+
+    def close_csv(self):
+        self.csv_file.close()
 
     def set_attitude(self):
         # Set the attitude of the drone by changing the roll angle
@@ -120,16 +139,14 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         roll_deg = np.rad2deg(self.assessment.roll)
         return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
         
-    def check_bounds(self, predicted_velocity, predicted_load_factor, velocities, calc_load_factor_lists):
-        num_lines_crossed = 0
+    def check_bounds(self, predicted_velocity, predicted_load_factor, velocities_lists, calc_load_factor_lists):
+        self.num_lines_crossed = 0
         for calc_load_factor_list in calc_load_factor_lists:
-            closest_index = np.argmin(np.abs(np.array(velocities) - predicted_velocity))
+            closest_index = np.argmin(np.abs(np.array(velocities_lists) - predicted_velocity))
             closest_load_factor = calc_load_factor_list[closest_index]
-
             if predicted_load_factor > closest_load_factor:
-                num_lines_crossed += 1
-
-        return num_lines_crossed
+                self.num_lines_crossed += 1
+        return self.num_lines_crossed
 
     def run(self):
         last_req = rospy.Time.now()
@@ -146,11 +163,23 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 last_req = rospy.Time.now()
     
             if current_state.mode == self.mode:
-                # checks bounds here
-                self.check_bounds()
+                self.num_lines_crossed = self.check_bounds(self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.static_bounds_vel, self.static_bounds_n)
+                if self.num_lines_crossed == 1:
+                    rospy.loginfo(f"Drone approaching flight envelope bound (level {self.num_lines_crossed}): Mild")
+                elif self.num_lines_crossed == 2:
+                    rospy.logwarn(f"ALERT: Drone is approaching flight envelope bound (level {self.num_lines_crossed}): Moderate")
+                elif self.num_lines_crossed == 3:
+                    rospy.logerr(f"CAUTION: Drone is breaching flight envelope bound (level {self.num_lines_crossed}): Severe")
+                elif self.num_lines_crossed == 4:
+                    rospy.logfatal(f"WARNING: Drone is nearing critical flight envelope bound (level {self.num_lines_crossed}): Critical")
+                elif self.num_lines_crossed == 5:
+                    rospy.logfatal(f"Drone has surpassed flight envelope (level {self.num_lines_crossed}): Fatal")
+
 
             last_req = rospy.Time.now()
             self.rate.sleep()
+
+        self.close_csv()
 
 
 
