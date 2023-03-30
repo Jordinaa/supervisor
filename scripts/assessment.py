@@ -147,7 +147,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.load_factor_predict = 0.0
         self.previous_filtered_load_factor = None
         self.weight = .1
-        self.velocity_weight = 1.2
+        self.velocity_weight = 2
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
@@ -308,6 +308,7 @@ class Visualiser(FlightEnvelopeAssessment):
             self.lines[0].set_data(self.thinned_velocity_list, self.thinned_load_factor_list)
             self.lines[1].set_data(self.thinned_velocity_prediction_list, self.thinned_load_factor_prediction_list)
             return self.lines
+
         else:
             print("Getting current data")
             return self.lines
@@ -332,7 +333,7 @@ if __name__ == "__main__":
     vis = Visualiser()
 
     while not rospy.is_shutdown():
-        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=50, blit=False)
+        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=200, blit=False)
         plt.show(block=True)
         rate.sleep()
     plt.close('all')

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import signal
+import sys
 import argparse
 import numpy as np
 import csv
@@ -10,6 +12,9 @@ from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State, AttitudeTarget
 from mavros_msgs.srv import CommandBool, CommandBoolRequest, SetMode, SetModeRequest
 from std_msgs.msg import Header
+# from mavros_msgs.msg import FlightTestInput
+from geometry_msgs.msg import Twist
+from mavros_msgs.msg import PositionTarget
 
 import config
 from helper import quaternionToEuler, eulerToQuaternion
@@ -43,6 +48,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.flag = False
 
         subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
+        # subFTI = rospy.Subscriber("mavros/flight_test_input", FlightTestInput, self.pti_cb)
         self.local_position_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
         self.attitude_position_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
@@ -80,6 +86,35 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.cb_key_event_list.append(self.num_lines_crossed)
         self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_n_list[-1], self.cb_true_v_list[-1], self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.num_lines_crossed])
 
+    def shutdown(self, speed):
+        rospy.loginfo("Shutting down Flight Envelope Supervisor...")
+        self.set_velocity(speed, 0.0, 0.0)
+        self.set_mode()
+        self.arm_drone()
+        # self.set_attitude()
+        self.close_csv()
+        rospy.signal_shutdown("Shutting down Flight Envelope Supervisor...")
+        sys.exit(0)
+
+    def set_velocity(self, x, y, z):
+        velocity_command = Twist()
+        velocity_command.linear.x = x
+        velocity_command.linear.y = y
+        velocity_command.linear.z = z
+
+        velocity_publisher = rospy.Publisher("mavros/setpoint_velocity/cmd_vel_unstamped", Twist, queue_size=1)
+        velocity_publisher.publish(velocity_command)
+
+    def send_straight_setpoint(self, speed):
+        position_target = PositionTarget()
+        position_target.header.stamp = rospy.Time.now()
+        position_target.header.frame_id = "1"
+        position_target.type_mask = PositionTarget.IGNORE_PX | PositionTarget.IGNORE_PY | PositionTarget.IGNORE_PZ | PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ | PositionTarget.IGNORE_YAW | PositionTarget.IGNORE_YAW_RATE
+        position_target.velocity.x = speed  # Set the desired x-axis velocity in meters per second
+        position_target.velocity.y = 0.0
+        position_target.velocity.z = 0.0
+        self.local_position_pub.publish(position_target)
+
     def close_csv(self):
         self.csv_file.close()
 
@@ -105,7 +140,8 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
         self.attitude_position_pub.publish(attitude)
         
-    def pre_bake_commanders(self):
+    def pre_bake_commands(self):
+        # for i in range(20):
         for i in range(100):   
             if(rospy.is_shutdown()):
                 break
@@ -116,10 +152,8 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.flag = True
 
     def set_mode(self):
-        # Set the flight mode of the drone
         offb_set_mode = SetModeRequest()
         offb_set_mode.custom_mode = self.mode
-
         try:
             rospy.wait_for_service('mavros/set_mode', timeout=5)
             set_mode = rospy.ServiceProxy('mavros/set_mode', SetMode)
@@ -140,13 +174,16 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
         
     def check_bounds(self, predicted_velocity, predicted_load_factor, velocities_lists, calc_load_factor_lists):
-        self.num_lines_crossed = 0
+        num_lines_crossed = 0
         for calc_load_factor_list in calc_load_factor_lists:
             closest_index = np.argmin(np.abs(np.array(velocities_lists) - predicted_velocity))
             closest_load_factor = calc_load_factor_list[closest_index]
+            # print(f"Predicted load factor: {predicted_load_factor:.4}, closest load factor: {closest_load_factor:.4}")
+            
             if predicted_load_factor > closest_load_factor:
-                self.num_lines_crossed += 1
-        return self.num_lines_crossed
+                num_lines_crossed += 1
+    
+        return num_lines_crossed
 
     def run(self):
         last_req = rospy.Time.now()
@@ -161,9 +198,10 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
                 self.arm_drone()
                 last_req = rospy.Time.now()
-    
+                
             if current_state.mode == self.mode:
                 self.num_lines_crossed = self.check_bounds(self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.static_bounds_vel, self.static_bounds_n)
+                print(f"while loop #: {self.num_lines_crossed}") 
                 if self.num_lines_crossed == 1:
                     rospy.loginfo(f"Drone approaching flight envelope bound (level {self.num_lines_crossed}): Mild")
                 elif self.num_lines_crossed == 2:
@@ -175,13 +213,16 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 elif self.num_lines_crossed == 5:
                     rospy.logfatal(f"Drone has surpassed flight envelope (level {self.num_lines_crossed}): Fatal")
 
-
             last_req = rospy.Time.now()
             self.rate.sleep()
 
         self.close_csv()
 
-
+def sigint_handler(sig, frame):
+    rospy.loginfo("Stopping the script and making the drone fly in a straight line...")
+    supervisor.shutdown(18.0)
+    # rospy.sleep(1)
+    sys.exit(0)
 
 if __name__ == "__main__":
 
@@ -189,7 +230,10 @@ if __name__ == "__main__":
     rate = rospy.Rate(20)
 
     supervisor = FlightEnvelopeSupervisor()
-    supervisor.pre_bake_commanders()
+    
+    signal.signal(signal.SIGINT, sigint_handler)
+
+    supervisor.pre_bake_commands()
     supervisor.set_mode()
     supervisor.arm_drone()
     supervisor.set_attitude()
