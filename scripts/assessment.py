@@ -187,12 +187,12 @@ class Visualiser(FlightEnvelopeAssessment):
         self.labels = ['$n_{t}$', '$n_{p}$']
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
 
-        static_velocity, static_load_factors = self.calc_load_factor_vs_velocity_static()
+        self.static_velocity, self.static_load_factors = self.calc_load_factor_vs_velocity_static()
         assessment = FlightEnvelopeAssessment()
-        assessment.supervisor_bounds = self.static_plot(static_velocity, static_load_factors)
-        assessment.predict_velocity = self.velocity_prediction_list[-1]
-        assessment.predict_load_factor = self.load_factor_prediction_list[-1]
-        print(assessment.predict_velocity, assessment.predict_load_factor)
+        assessment.supervisor_bounds_val = self.static_plot(self.static_velocity, self.static_load_factors)
+        assessment.predict_velocity_val = self.velocity_prediction_list[-1]
+        assessment.predict_load_factor_val = self.load_factor_prediction_list[-1]
+        print(assessment.predict_velocity_val, assessment.predict_load_factor_val)
 
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
@@ -228,7 +228,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.vertical_acceleration_list.append(az)
 
         self.time_list.append(time.time() - self.start_time)
-    
+
     def state_cb(self, msg):
         self.current_state = msg
 
@@ -318,8 +318,8 @@ class Visualiser(FlightEnvelopeAssessment):
     def plot_init_vn(self):
         self.ax.set_xlim(left=0, right=25)
         self.ax.set_ylim([-5, 5])
-        self.ax.axhline(y=1, color='green', linestyle='--', alpha=0.2, linewidth=2)
-        self.ax.axhline(y=-1, color='green', linestyle='--', alpha=0.2, linewidth=2)
+        self.ax.axhline(y=1, color='green', linestyle='--', alpha=0.2, linewidth=1)
+        self.ax.axhline(y=-1, color='green', linestyle='--', alpha=0.2, linewidth=1)
         self.ax.set_xlabel('Velocity')
         # self.ax.set_xticks(range(0, int(ticks), 5))
         self.ax.set_ylabel('Load Factor')
@@ -369,9 +369,8 @@ if __name__ == "__main__":
     vis = Visualiser()
 
     while not rospy.is_shutdown():
-        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, blit=False)
+        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=50, blit=False)
         plt.show(block=True)
         rate.sleep()
     vis.close_csv()
     plt.close('all')
-    # vis.__del__()

@@ -139,18 +139,8 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 last_req = rospy.Time.now()
     
             if current_state.mode == self.mode:
+                # checks bounds here
                 print('in loop')
-                # self.check_bounds()
-                # check_bounds(
-
-                # if self.out_of_roll_bounds() == True:
-                #     while np.rad2deg(self.bounds.roll) > 1:
-                #         self.flag = True
-                #         self.set_attitude()
-                #         self.rate.sleep()
-                # else:
-                #     self.flag = False
-                #     self.set_attitude()
 
             last_req = rospy.Time.now()
             self.rate.sleep()
