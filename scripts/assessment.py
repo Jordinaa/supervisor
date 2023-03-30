@@ -166,6 +166,7 @@ class Visualiser(FlightEnvelopeAssessment):
 
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
+        self.cb_true_v = msg.airspeed
         self.velocity_list.append(msg.airspeed)
 
     def position_cb(self, msg):
@@ -225,6 +226,7 @@ class Visualiser(FlightEnvelopeAssessment):
 
     def calc_load_factor(self):
         load_factor = self.filteredAz / self.g
+        self.cb_true_n = load_factor
         self.load_factor_list.append(load_factor)
         self.load_factor = load_factor
         return load_factor
@@ -237,17 +239,13 @@ class Visualiser(FlightEnvelopeAssessment):
     def predict_next_load_factor(self):
         next_time_step = len(self.load_factor_list)
         predicted_load_factor = self.poly_predict(xlist=list(range(next_time_step)), ylist=self.load_factor_list, samplesize=min(3, len(self.load_factor_list) - 1), x=next_time_step)
+        self.cb_predict_n = predicted_load_factor
         self.load_factor_prediction_list.append(predicted_load_factor)
         return predicted_load_factor
 
-
-    # def poly_predict(self, xlist, ylist, samplesize):
-    #     coeffs = np.polyfit(xlist, ylist, samplesize)
-    #     y_new = np.polyval(coeffs, )
-    #     return coeffs
-    
     def predict_velocity(self):
         v_pred = self.velocity + self.filteredAx * self.velocity_weight
+        self.cb_predict_v = v_pred
         self.velocity_prediction_list.append(v_pred)
         # v_pred = self.velocity + self.horizontal_acceleration * (self.time_list[-1] - self.time_list[-2])
         return v_pred
@@ -276,7 +274,7 @@ class Visualiser(FlightEnvelopeAssessment):
 
     def plot_init_vn(self):
         self.ax.set_xlim(left=0, right=25)
-        self.ax.set_ylim([-5, 10])
+        self.ax.set_ylim([-5, 5])
         self.ax.axhline(y=1, color='green', linestyle='--', alpha=0.2, linewidth=2)
         self.ax.axhline(y=-1, color='green', linestyle='--', alpha=0.2, linewidth=2)
         self.ax.set_xlabel('Velocity')
@@ -296,7 +294,6 @@ class Visualiser(FlightEnvelopeAssessment):
 
         load_factor = self.calc_load_factor()
         self.load_factor_list.append(load_factor)
-
         self.predict_next_load_factor()
         self.predict_velocity()
         self.data_logger_publisher()
