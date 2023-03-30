@@ -49,10 +49,12 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
         self.setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
 
-        self.bounds = FlightEnvelopeAssessment()
-        self.bounds.__init__()
-        self.bounds.supervisor_bounds
-        print(f'bounds: {self.bounds.supervisor_bounds}')
+        self.assessment = FlightEnvelopeAssessment()
+        self.assessment.__init__()
+        self.assessment.supervisor_bounds_val = self.assessment.calc_load_factor_vs_velocity_static()
+        self.predict_n = self.assessment.predict_load_factor_val
+        self.predict_v = self.assessment.predict_velocity_val
+        print(f"predict val inside super: {self.predict_v}\n predict n val inside super: {self.predict_n}")
 
     def set_attitude(self):
         # Set the attitude of the drone by changing the roll angle
@@ -107,29 +109,27 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             rospy.loginfo("Vehicle armed")
 
     def out_of_roll_bounds(self):
-        roll_deg = np.rad2deg(self.bounds.roll)
+        roll_deg = np.rad2deg(self.assessment.roll)
         return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
     
-    def check_bounds(self, predicted_velocity, predicted_load_factor):
-        bounds = self.bounds.supervisor_bounds
-        for bound_velocity, bound_load_factor in bounds:
-            if predicted_velocity < bound_velocity[0] or predicted_velocity > bound_velocity[-1]:
-                print(f"Velocity exceeded: {predicted_velocity}")
-                return (config.SLF_PHI, config.SLF_THETA, config.SLF_PSI, config.SLF_P_RATE, config.SLF_Q_RATE, config.SLF_R_RATE, config.SLF_AIRSPEED)
+    def check_bounds(self, predicted_velocity, predicted_load_factor, static_v, static_n):
+        closest_index = np.argmin(np.abs(np.array(static_v) - predicted_velocity))
+        closest_load_factors = [load_factor_list[closest_index] for load_factor_list in static_n]
+        threshold = 0.1
+        is_within_threshold = any(np.abs(predicted_load_factor - closest_load_factor) <= threshold for closest_load_factor in closest_load_factors)
+        return is_within_threshold
+        # dynamic_pressure = 0.5 * self.assessment.rho * predicted_velocity ** 2
+        # lift = self.assessment.clMax * self.assessment.area * self.assessment.dynamic_pressure
+        # load_factor = self.assessment.lift / (self.assessment.mass * self.assessment.g)
 
-            if predicted_load_factor < bound_load_factor[0] or predicted_load_factor > bound_load_factor[-1]:
-                print(f"Load factor exceeded: {predicted_load_factor}")
-                return (config.SLF_PHI, config.SLF_THETA, config.SLF_PSI, config.SLF_P_RATE, config.SLF_Q_RATE, config.SLF_R_RATE, config.SLF_AIRSPEED)
-
-        # If within bounds, return None
-        return None
 
     def run(self):
         last_req = rospy.Time.now()
-
+        
         while not rospy.is_shutdown():
+            print(f"predict val inside while super: {self.predict_v}\n predict n val inside while super: {self.predict_n}")
             # not sure how these are called back because the state callback is the only one that has self.current_state 
-            current_state = self.bounds.current_state
+            current_state = self.assessment.current_state
             if current_state.mode != self.mode and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
                 self.set_mode()
                 last_req = rospy.Time.now()
@@ -140,6 +140,9 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
     
             if current_state.mode == self.mode:
                 print('in loop')
+                # self.check_bounds()
+                # check_bounds(
+
                 # if self.out_of_roll_bounds() == True:
                 #     while np.rad2deg(self.bounds.roll) > 1:
                 #         self.flag = True
@@ -151,20 +154,14 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
             last_req = rospy.Time.now()
             self.rate.sleep()
- 
-if __name__ == "__main__":
-    # Parse command line arguments for roll and pitch
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("roll", type=float, help="Desired roll angle in degrees")
-    # parser.add_argument("pitch", type=float, help="Desired pitch angle in degrees")
-    # parser.add_argument("yaw", type=float, help="Desired yaw angle in degrees")
 
-    # args = parser.parse_args()
+
+
+if __name__ == "__main__":
 
     rospy.init_node("Flight_Envelope_Supervisor")
     rate = rospy.Rate(20)
 
-    # supervisor = FlightEnvelopeSupervisor(args.roll, args.pitch, args.yaw)
     supervisor = FlightEnvelopeSupervisor()
     supervisor.pre_bake_commanders()
     supervisor.set_mode()

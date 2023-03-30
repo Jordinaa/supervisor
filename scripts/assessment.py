@@ -35,7 +35,9 @@ class FlightEnvelopeAssessment():
         self.mass = config.MASS
         self.g = config.G
 
-        self.supervisor_bounds = None
+        self.supervisor_bounds_val = None
+        self.predict_velocity_val = None
+        self.predict_load_factor_val = None
 
         self.coefficient_lift = 0.0
         self.dynamic_pressure = 0.01
@@ -72,7 +74,7 @@ class FlightEnvelopeAssessment():
         return self.vStall
 
     def calc_load_factor_vs_velocity_static(self):
-        velocities = np.linspace(0, 100, 250)
+        velocities = np.linspace(0, 30, 250)
         calc_load_factor_lists = []
         calc_load_factor_list = []
 
@@ -143,8 +145,10 @@ class Visualiser(FlightEnvelopeAssessment):
         self.cl_list = []
         self.load_factor_list = []
 
-        self.velocity_prediction_list = []
-        self.load_factor_prediction_list = []
+        # PLOTS predictions
+        self.velocity_prediction_list = [0]
+        self.load_factor_prediction_list = [0]
+
         self.vertical_acceleration_list_prediction = [0, 0]
         self.horizontal_acceleration_list_prediction = [0, 0]
         self.filteredAz_list = []
@@ -186,6 +190,9 @@ class Visualiser(FlightEnvelopeAssessment):
         static_velocity, static_load_factors = self.calc_load_factor_vs_velocity_static()
         assessment = FlightEnvelopeAssessment()
         assessment.supervisor_bounds = self.static_plot(static_velocity, static_load_factors)
+        assessment.predict_velocity = self.velocity_prediction_list[-1]
+        assessment.predict_load_factor = self.load_factor_prediction_list[-1]
+        print(assessment.predict_velocity, assessment.predict_load_factor)
 
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
