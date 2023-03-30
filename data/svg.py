@@ -1,3 +1,8 @@
+'''
+saves data as an svg file
+'''
+
+
 import csv
 import matplotlib.pyplot as plt
 

@@ -15,7 +15,7 @@ from std_msgs.msg import Header
 import config
 from helper import quaternionToEuler, eulerToQuaternion
 from assessment import FlightEnvelopeAssessment
-
+from supervisor.msg import DataLogger
 
 class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
     """
@@ -37,24 +37,32 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.pb_pitch = 0.0
         self.pb_yaw = 0.0
 
+        
+        self.cb_true_v_sup = None
+        self.cb_true_n_sup = None
+        self.cb_predict_v_sup = None
+        self.cb_predict_n_sup = None
+
         # FE Assessment is created these values will be set equal to whatever those bounds are
         self.flag = False
-        self.maxRoll = 50
 
-        self.local_position_topic = "mavros/setpoint_position/local"
-        self.attitude_position_topic = "mavros/setpoint_raw/attitude"
+        subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
 
         self.local_position_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
         self.attitude_position_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
         self.setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
 
-        self.assessment = FlightEnvelopeAssessment()
-        self.assessment.__init__()
-        self.assessment.supervisor_bounds_val = self.assessment.calc_load_factor_vs_velocity_static()
-        self.predict_n = self.assessment.predict_load_factor_val
-        self.predict_v = self.assessment.predict_velocity_val
-        print(f"predict val inside super: {self.predict_v}\n predict n val inside super: {self.predict_n}")
+        self.supervisor_bounds_val = self.calc_load_factor_vs_velocity_static()
+
+    def data_logger_callback(self, msg):
+        self.cb_time = msg.time
+        self.cb_true_n_sup = msg.true_n
+        self.cb_true_v_sup = msg.true_velocity
+        self.cb_predict_n_sup = msg.predicted_n
+        self.cb_predict_v_sup = msg.predicted_velocity
+        self.cb_key_event = msg.key_event
+        self.cb_key_event_time = msg.key_event_time
 
     def set_attitude(self):
         # Set the attitude of the drone by changing the roll angle
@@ -111,25 +119,24 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
     def out_of_roll_bounds(self):
         roll_deg = np.rad2deg(self.assessment.roll)
         return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
-    
-    def check_bounds(self, predicted_velocity, predicted_load_factor, static_v, static_n):
-        closest_index = np.argmin(np.abs(np.array(static_v) - predicted_velocity))
-        closest_load_factors = [load_factor_list[closest_index] for load_factor_list in static_n]
-        threshold = 0.1
-        is_within_threshold = any(np.abs(predicted_load_factor - closest_load_factor) <= threshold for closest_load_factor in closest_load_factors)
-        return is_within_threshold
-        # dynamic_pressure = 0.5 * self.assessment.rho * predicted_velocity ** 2
-        # lift = self.assessment.clMax * self.assessment.area * self.assessment.dynamic_pressure
-        # load_factor = self.assessment.lift / (self.assessment.mass * self.assessment.g)
+        
+    def check_bounds(self, predicted_velocity, predicted_load_factor, velocities, calc_load_factor_lists):
+        num_lines_crossed = 0
+        for calc_load_factor_list in calc_load_factor_lists:
+            closest_index = np.argmin(np.abs(np.array(velocities) - predicted_velocity))
+            closest_load_factor = calc_load_factor_list[closest_index]
 
+            if predicted_load_factor > closest_load_factor:
+                num_lines_crossed += 1
+
+        return num_lines_crossed
 
     def run(self):
         last_req = rospy.Time.now()
         
         while not rospy.is_shutdown():
-            print(f"predict val inside while super: {self.predict_v}\n predict n val inside while super: {self.predict_n}")
             # not sure how these are called back because the state callback is the only one that has self.current_state 
-            current_state = self.assessment.current_state
+            current_state = self.current_state
             if current_state.mode != self.mode and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
                 self.set_mode()
                 last_req = rospy.Time.now()
@@ -140,7 +147,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
     
             if current_state.mode == self.mode:
                 # checks bounds here
-                print('in loop')
+                self.check_bounds()
 
             last_req = rospy.Time.now()
             self.rate.sleep()

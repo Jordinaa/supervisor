@@ -35,10 +35,6 @@ class FlightEnvelopeAssessment():
         self.mass = config.MASS
         self.g = config.G
 
-        self.supervisor_bounds_val = None
-        self.predict_velocity_val = None
-        self.predict_load_factor_val = None
-
         self.coefficient_lift = 0.0
         self.dynamic_pressure = 0.01
         self.lift = 0.0
@@ -178,7 +174,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "n_true", "true_velocity" "predicted_n", "predicted_velocity", "key_event", "key_event_time"])
-
+ 
         sns.set_style('whitegrid')
         sns.set_palette('colorblind')
         self.fig, (self.ax) = plt.subplots()
@@ -187,12 +183,8 @@ class Visualiser(FlightEnvelopeAssessment):
         self.labels = ['$n_{t}$', '$n_{p}$']
         self.lines = [self.ax.plot([], [], label=label, color=color, marker='o', linestyle='', markersize=4)[0] for label, color in zip(self.labels, self.colors)]
 
-        self.static_velocity, self.static_load_factors = self.calc_load_factor_vs_velocity_static()
-        assessment = FlightEnvelopeAssessment()
-        assessment.supervisor_bounds_val = self.static_plot(self.static_velocity, self.static_load_factors)
-        assessment.predict_velocity_val = self.velocity_prediction_list[-1]
-        assessment.predict_load_factor_val = self.load_factor_prediction_list[-1]
-        print(assessment.predict_velocity_val, assessment.predict_load_factor_val)
+        static_velocity, static_load_factors = self.calc_load_factor_vs_velocity_static()
+        self.static_plot(static_velocity, static_load_factors)
 
     def velocity_cb(self, msg):
         self.velocity = msg.airspeed
