@@ -42,6 +42,8 @@ class FlightEnvelopeAssessment():
         self.load_factor = 0.0
         self.vStall = 0.0
 
+        subState = rospy.Subscriber('mavros/state', State, callback=self.state_cb)
+
         self.coefficient_lift_list = []
         
         self.angleList = np.arange(0, self.alpha_stall, 0.01 * np.pi/180)
@@ -50,6 +52,9 @@ class FlightEnvelopeAssessment():
         self.clMaxWeights = [.9, .8, .7, .6]
         self.vStall = self.calc_v_stall
         self.angleListDegrees = np.rad2deg(self.angleList)
+
+    def state_cb(self, msg):
+        self.current_state = msg
 
     def calc_cl(self, angle_of_attack):
         clift = self.cla * (angle_of_attack - self.alpha0)
@@ -103,7 +108,9 @@ class Visualiser(FlightEnvelopeAssessment):
         self.horizontal_acceleration = 0.0
         self.vertical_acceleration = 0.0
         self.load_factor = 0.0
-
+        self.current_state = None
+        self.mode = None
+        
         self.cb_time = 0.0
         self.cb_true_n = 0.0
         self.cb_true_v = 0.0
@@ -111,6 +118,14 @@ class Visualiser(FlightEnvelopeAssessment):
         self.cb_predict_v = 0.0
         self.cb_key_event = 0.0
         self.cb_key_event_time = 0.0
+
+        self.cb_time_list = []
+        self.cb_true_n_list = []
+        self.cb_true_v_list = []
+        self.cb_predict_n_list = []
+        self.cb_predict_v_list = []
+        self.cb_key_event_time_list = []
+        self.cb_key_event_list = []
 
         self.time_list = []
         self.roll_list = []
@@ -153,6 +168,11 @@ class Visualiser(FlightEnvelopeAssessment):
         subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
         self.pub = rospy.Publisher('DataLogger', DataLogger, queue_size=10)
 
+        self.csv_path = "/home/taranto/catkin_ws/src/supervisor/data/drone_data.csv"
+        self.csv_file = open(self.csv_path, "w", newline="")
+        self.csv_writer = csv.writer(self.csv_file)
+        self.csv_writer.writerow(["time", "n_true", "true_velocity" "predicted_n", "predicted_velocity", "key_event", "key_event_time"])
+
         sns.set_style('whitegrid')
         sns.set_palette('colorblind')
         self.fig, (self.ax) = plt.subplots()
@@ -178,6 +198,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.roll_list.append(self.roll)
         self.pitch_list.append(self.pitch)
         self.yaw_list.append(self.yaw)
+        # print(f'roll: {np.rad2deg(self.roll):.4}, pitch: {np.rad2deg(self.pitch):.4}, yaw: {np.rad2deg(self.yaw):.4}')
 
     def rates_cb(self, msg):
         self.roll_rate = msg.angular_velocity.x
@@ -210,6 +231,18 @@ class Visualiser(FlightEnvelopeAssessment):
         self.cb_key_event = msg.key_event
         self.cb_key_event_time = msg.key_event_time
 
+        self.cb_time_list.append(self.cb_time)
+        self.cb_true_n_list.append(self.cb_true_n)
+        self.cb_true_v_list.append(self.cb_true_v)
+        self.cb_predict_n_list.append(self.cb_predict_n)
+        self.cb_predict_v_list.append(self.cb_predict_v)
+        self.cb_key_event_list.append(self.cb_key_event)
+        self.cb_key_event_time_list.append(self.cb_key_event_time)
+        self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_n_list[-1], self.cb_true_v_list[-1], self.cb_predict_n_list[-1],self.cb_predict_v_list[-1], self.cb_key_event_list[-1], self.cb_key_event_time_list[-1]])
+
+    def close_csv(self):
+        self.csv_file.close()
+
     def data_logger_publisher(self):
         data_logger = DataLogger()
         data_logger.time = self.time_list[-1]
@@ -217,8 +250,8 @@ class Visualiser(FlightEnvelopeAssessment):
         data_logger.true_velocity = self.velocity_list[-1]
         a, b = self.butter_worth_filter()
         self.filteredAz, self.filteredAx = self.filter_signals(a, b)
-        data_logger.predicted_n = self.filteredAx
-        data_logger.predicted_velocity = self.filteredAz
+        data_logger.predicted_n = self.load_factor_prediction_list[-1]
+        data_logger.predicted_velocity = self.velocity_prediction_list[-1]
         
         self.pub.publish(data_logger)
         self.vertical_acceleration_list_prediction.append(self.filteredAz)
@@ -313,13 +346,6 @@ class Visualiser(FlightEnvelopeAssessment):
         for load_factor, line_style, label, line_color in zip(static_load_factors, line_styles, line_labels, line_colors):
             self.ax.plot(static_velocity, load_factor, color=line_color, linestyle=line_style, label=label, alpha=1, linewidth=1)
 
-
-
-
-
-
-
-
 if __name__ == "__main__":
 
     rospy.init_node('flight_envelope_assessment_node')
@@ -329,14 +355,10 @@ if __name__ == "__main__":
     bounds = FlightEnvelopeAssessment()
     vis = Visualiser()
 
-    try:
-        while not rospy.is_shutdown():
-            ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, blit=False)
-            plt.show(block=True)
-            rate.sleep()
-        plt.close('all')
-        # vis.__del__()
-
-    except KeyboardInterrupt:
-        print("Exiting Flight Envelope Assessment")
-
+    while not rospy.is_shutdown():
+        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, blit=False)
+        plt.show(block=True)
+        rate.sleep()
+    vis.close_csv()
+    plt.close('all')
+    # vis.__del__()
