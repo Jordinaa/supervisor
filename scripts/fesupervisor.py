@@ -50,7 +50,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         # subFTI = rospy.Subscriber("mavros/flight_test_input", FlightTestInput, self.pti_cb)
         subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
         self.velocity_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10)
-        # rospy.init_node('drone_velocity_control', anonymous=True)
+        self.setpoint_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=10)
         self.local_position_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
         self.attitude_position_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=10)
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
@@ -155,20 +155,14 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             self.rate.sleep()
         
     def steady_level_flight(self, speed=18.0):
-        velocity_msg = TwistStamped()
-        velocity_msg.header = Header(frame_id='base_link')
-        velocity_msg.header.stamp = rospy.Time.now()
-        # Set the linear velocities (in meters per second)
-        if self.flag == True:
-            velocity_msg.twist.linear.x = speed
-            velocity_msg.twist.linear.y = 0.0
-            velocity_msg.twist.linear.z = 0.0
-            # Set the angular rates (in radians per second)
-            velocity_msg.twist.angular.x = 0.0
-            velocity_msg.twist.angular.y = 0.0
-            velocity_msg.twist.angular.z = 0.0
-            print('steady level flight')
-        self.velocity_pub.publish(velocity_msg)
+        # Create the message to set the attitude and thrust
+        setpoint_msg = TwistStamped()
+        setpoint_msg.header.stamp = rospy.Time.now()
+        setpoint_msg.header.frame_id = 'base_link'
+        setpoint_msg.twist.linear.x = speed
+        setpoint_msg.twist.angular.z = 0.0
+        self.velocity_pub.publish(setpoint_msg)
+        rospy.loginfo('Velocity set.')
 
 ##############
 
