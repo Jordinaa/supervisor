@@ -147,7 +147,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.load_factor_predict = 0.0
         self.previous_filtered_load_factor = None
         self.weight = .1
-        self.velocity_weight = 2
+        self.velocity_weight = 1.2
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
@@ -250,7 +250,12 @@ class Visualiser(FlightEnvelopeAssessment):
         return predicted_load_factor
 
     def predict_velocity(self):
-        v_pred = self.velocity + self.filteredAx * self.velocity_weight
+        # change velocity weight to time horizon
+        if self.filteredAz == 0:
+            Ax = abs(self.filteredAx) # absolute value of self.filteredAx when self.filteredAz is 0
+        else:
+            Ax = np.sqrt(self.filteredAx ** 2 - self.filteredAz ** 2)        
+        v_pred = self.velocity + Ax * self.velocity_weight
         self.cb_predict_v = v_pred
         self.velocity_prediction_list.append(v_pred)
         # v_pred = self.velocity + self.horizontal_acceleration * (self.time_list[-1] - self.time_list[-2])

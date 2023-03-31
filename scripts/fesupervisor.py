@@ -34,9 +34,10 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.rate = rospy.Rate(20)
         self.mode = 'OFFBOARD'
         self.flag = False
-        self.command_pitch = 45
-        self.command_time = 20
-
+        self.pitch_flag = False
+        self.command_pitch = -45
+        self.command_time = 0
+        self.command_rate = 0
 
         self.roll = 0.0
         self.pitch = 0.0
@@ -79,7 +80,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.csv_path = f"/home/taranto/catkin_ws/src/supervisor/data/drone_data_{timestamp}_{self.command_pitch}_{self.command_time}.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(["time", "n_true", "true_velocity" "predicted_n", "predicted_velocity", "bounds_crossed"])
+        self.csv_writer.writerow(["time", "n_true", "true_velocity", "predicted_n", "predicted_velocity", "bounds_crossed"])
 
     def close_csv(self):
         self.csv_file.close()
@@ -104,20 +105,18 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
         self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_n_list[-1], self.cb_true_v_list[-1], self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.num_lines_crossed])
 
-
 #############################################
-
-    def shutdown(self, speed):
-        rospy.loginfo("Shutting down Flight Envelope Supervisor...")
+    def shutdown(self):
+        rospy.loginfo("Closing CSV")
         self.pre_bake_commands()
-        self.set_velocity(speed, 0.0, 0.0)
         self.set_mode()
         self.arm_drone()
-        # self.set_attitude()
+        self.set_attitude()
         self.close_csv()
-        rospy.signal_shutdown("Shutting down Flight Envelope Supervisor...")
+        rospy.signal_shutdown("Exiting Supervisor")
         sys.exit(0)
-
+#############################################
+# Tests
     def set_velocity(self, x, y, z):
         velocity_command = Twist()
         velocity_command.linear.x = x
@@ -172,9 +171,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         setpoint_msg.twist.angular.z = 0.0
         self.velocity_pub.publish(setpoint_msg)
         rospy.loginfo('Velocity set.')
-
 #############################################
-
     def check_bounds(self, predicted_velocity, predicted_load_factor, velocities_lists, calc_load_factor_lists):
         num_lines_crossed = 0
         print(f'Predicted velocity: {predicted_velocity:.4}, predicted load factor: {predicted_load_factor:.4}')
@@ -186,32 +183,32 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 num_lines_crossed += 1
         return num_lines_crossed
 
+    def set_rate(self, rate):
+        rate = np.deg2rad(rate)
+        attitude_msg = AttitudeTarget()
+        attitude_msg.type_mask = AttitudeTarget.IGNORE_ATTITUDE
+        attitude_msg.body_rate.x = rate
+        attitude_msg.body_rate.y = 0.0
+        attitude_msg.body_rate.z = 0.0
+        self.attitude_position_pub.publish(attitude_msg)
+
     def execute_pitch_angle(self, pitch_angle, duration):
-        # Set drone to fly straight
         self.pitch = 0.0
         self.set_attitude()
-        rospy.loginfo("Injecting Command")
         rospy.sleep(1)
-
-        # Execute the desired pitch angle for the specified duration
         self.pitch = pitch_angle
+        self.set_attitude()
         start_time = rospy.Time.now()
-        rospy.loginfo(f"Injecting pitch angle {pitch_angle} for {duration} seconds")
+        # rospy.loginfo(f"Injecting pitch angle {pitch_angle} for {duration} seconds")
         while (rospy.Time.now() - start_time).to_sec() < duration and not rospy.is_shutdown():
             self.set_attitude()
             self.rate.sleep()
+            self.supervisor_takeover()
 
-            # Check bounds and allow supervisor to take over if needed
-            self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-            if self.num_lines_crossed >= 4:
-                rospy.logfatal(f"SUPERVISOR TAKING OVER (level {self.num_lines_crossed}): Critical")
-                self.supervisor_takeover()
-                break
-
-        # Set drone back to fly straight
-        self.pitch = 0.0
+    def execute_pitch_angle1(self, pitch_angle):
+        self.pitch = pitch_angle
+        rospy.loginfo(f"Injecting pitch angle {pitch_angle}")
         self.set_attitude()
-        rospy.loginfo("Finished Command")
 
     def supervisor_takeover(self):
         self.flag = True
@@ -221,9 +218,9 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             self.rate.sleep()
             rospy.loginfo(f"Supervisor takeover loop #: {self.num_lines_crossed}")
         self.flag = False
-
 #############################################
     def pre_bake_commands(self):
+        rospy.loginfo('prebake commands')
         for i in range(50):
         # for i in range(100):   
             if(rospy.is_shutdown()):
@@ -231,7 +228,6 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             self.flag = True
             self.set_attitude()
             self.rate.sleep()
-            rospy.loginfo('prebake commands')
         self.flag = True
 
     def set_attitude(self):
@@ -254,6 +250,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             attitude.orientation.w = quaternion[3]
         self.attitude_position_pub.publish(attitude)
 #############################################
+
     def set_mode(self):
         offb_set_mode = SetModeRequest()
         offb_set_mode.custom_mode = self.mode
@@ -285,8 +282,22 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 last_req = rospy.Time.now()
 
             if current_state.mode == self.mode:
-                self.execute_pitch_angle(self.command_pitch, self.command_time)
-                
+                # self.execute_pitch_angle(self.command_pitch, self.command_time)
+                self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
+                if self.pitch_flag == False:
+                    # self.execute_pitch_angle(self.command_pitch, self.command_time)
+                    self.execute_pitch_angle1(self.command_pitch)
+
+                if self.num_lines_crossed >= 4:
+                    self.pitch_flag = True
+                    rospy.logfatal(f"BOUNDS CROSSED (level {self.num_lines_crossed}): Critical")
+                    while self.num_lines_crossed >= 4:
+                        self.flag = True
+                        self.set_attitude()
+                        self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
+                        # print(f'SUPERVISOR returning to steady level flight: {self.num_lines_crossed}')
+
+
             else:
                 self.flag = False
                 self.set_attitude()
@@ -337,7 +348,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
 def sigint_handler(sig, frame):
     rospy.loginfo("Closing Supervisor")
-    # supervisor.shutdown(18.0)
+    supervisor.shutdown()
     supervisor.close_csv()
     rospy.sleep(1)
     sys.exit(0)
