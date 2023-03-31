@@ -32,25 +32,25 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.rate = rospy.Rate(20)
         self.mode = 'OFFBOARD'
 
-        self.roll = None
-        self.pitch = None
-        self.yaw = None
-        # [self.qx, self.qy, self.qz, self.qw] = eulerToQuaternion(self.roll, self.pitch, self.yaw)
+        self.roll = 0.0
+        self.pitch = 0.0
+        self.yaw = 0.0
+        [self.qx, self.qy, self.qz, self.qw] = eulerToQuaternion(self.roll, self.pitch, self.yaw)
         # another try
         self.pb_roll = 0.0
         self.pb_pitch = 0.0
         self.pb_yaw = 0.0
-        self.cb_true_v_sup = None
-        self.cb_true_n_sup = None
-        self.cb_predict_v_sup = None
-        self.cb_predict_n_sup = None
+        self.cb_true_v_sup = 0.0
+        self.cb_true_n_sup = 0.0
+        self.cb_predict_v_sup = 0.0
+        self.cb_predict_n_sup = 0.0
         # FE Assessment is created these values will be set equal to whatever those bounds are
         self.flag = False
 
         subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
         # subFTI = rospy.Subscriber("mavros/flight_test_input", FlightTestInput, self.pti_cb)
         self.local_position_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
-        self.attitude_position_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=1)
+        self.attitude_position_pub = rospy.Publisher("mavros/setpoint_raw/attitude", AttitudeTarget, queue_size=10)
         self.arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
         self.setMode = rospy.ServiceProxy("mavros/set_mode", SetMode)
 
@@ -88,6 +88,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
     def shutdown(self, speed):
         rospy.loginfo("Shutting down Flight Envelope Supervisor...")
+        self.pre_bake_commands()
         self.set_velocity(speed, 0.0, 0.0)
         self.set_mode()
         self.arm_drone()
@@ -137,12 +138,11 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             attitude.orientation.y = quaternion[1]
             attitude.orientation.z = quaternion[2]
             attitude.orientation.w = quaternion[3]
-
         self.attitude_position_pub.publish(attitude)
         
     def pre_bake_commands(self):
-        # for i in range(20):
-        for i in range(100):   
+        for i in range(50):
+        # for i in range(100):   
             if(rospy.is_shutdown()):
                 break
             self.flag = True
@@ -169,9 +169,31 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         if self.arm.call(arm_cmd).success == True:
             rospy.loginfo("Vehicle armed")
 
-    def out_of_roll_bounds(self):
-        roll_deg = np.rad2deg(self.assessment.roll)
-        return (roll_deg > self.maxRoll) or (roll_deg < -self.maxRoll)
+    def takeoff(self, target_altitude):
+        """
+        Make the drone take off to the target altitude.
+        """
+        rospy.loginfo("Taking off...")
+
+        takeoff_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
+
+        takeoff_pose = PoseStamped()
+        takeoff_pose.pose.position.x = 0
+        takeoff_pose.pose.position.y = 0
+        takeoff_pose.pose.position.z = target_altitude
+
+        reached_target_altitude = False
+
+        while not reached_target_altitude and not rospy.is_shutdown():
+            local_position = self.local_position.pose.position
+            altitude_error = abs(target_altitude - local_position.z)
+
+            if altitude_error < 0.5:  # Acceptable altitude error, change this value if necessary
+                reached_target_altitude = True
+                rospy.loginfo("Reached target altitude")
+
+            takeoff_pub.publish(takeoff_pose)
+            self.rate.sleep()
         
     def check_bounds(self, predicted_velocity, predicted_load_factor, velocities_lists, calc_load_factor_lists):
         num_lines_crossed = 0
@@ -201,21 +223,30 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 
             if current_state.mode == self.mode:
                 self.num_lines_crossed = self.check_bounds(self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.static_bounds_vel, self.static_bounds_n)
-                print(f"while loop #: {self.num_lines_crossed}") 
-                if self.num_lines_crossed == 1:
-                    rospy.loginfo(f"Drone approaching flight envelope bound (level {self.num_lines_crossed}): Mild")
-                elif self.num_lines_crossed == 2:
-                    rospy.logwarn(f"ALERT: Drone is approaching flight envelope bound (level {self.num_lines_crossed}): Moderate")
-                elif self.num_lines_crossed == 3:
-                    rospy.logerr(f"CAUTION: Drone is breaching flight envelope bound (level {self.num_lines_crossed}): Severe")
-                elif self.num_lines_crossed == 4:
-                    rospy.logfatal(f"WARNING: Drone is nearing critical flight envelope bound (level {self.num_lines_crossed}): Critical")
-                elif self.num_lines_crossed == 5:
-                    rospy.logfatal(f"Drone has surpassed flight envelope (level {self.num_lines_crossed}): Fatal")
+                if self.num_lines_crossed > 0:
+                    while self.num_lines_crossed > 0:
+                        self.flag = True
+                        # self.set_attitude()
+                        self.rate.sleep()
+                        print(f"while loop #: {self.num_lines_crossed}")
+                        self.num_lines_crossed = self.check_bounds(self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.static_bounds_vel, self.static_bounds_n)                        
+                    # if self.num_lines_crossed == 1:
+                    #     rospy.loginfo(f"Drone approaching flight envelope bound (level {self.num_lines_crossed}): Mild")
+                    # elif self.num_lines_crossed == 2:
+                    #     rospy.logwarn(f"ALERT: Drone is approaching flight envelope bound (level {self.num_lines_crossed}): Moderate")
+                    # elif self.num_lines_crossed == 3:
+                    #     rospy.logerr(f"CAUTION: Drone is breaching flight envelope bound (level {self.num_lines_crossed}): Severe")
+                    # elif self.num_lines_crossed == 4:
+                    #     rospy.logfatal(f"WARNING: Drone is nearing critical flight envelope bound (level {self.num_lines_crossed}): Critical")
+                    # elif self.num_lines_crossed == 5:
+                    #     rospy.logfatal(f"Drone has surpassed flight envelope (level {self.num_lines_crossed}): Fatal")
+                else:
+                    self.flag = False
+                    self.set_attitude()
+                    rospy.loginfo("Drone is within flight envelope")
 
             last_req = rospy.Time.now()
             self.rate.sleep()
-
         self.close_csv()
 
 def sigint_handler(sig, frame):
@@ -231,11 +262,12 @@ if __name__ == "__main__":
 
     supervisor = FlightEnvelopeSupervisor()
     
-    signal.signal(signal.SIGINT, sigint_handler)
+    # signal.signal(signal.SIGINT, sigint_handler)
 
     supervisor.pre_bake_commands()
     supervisor.set_mode()
     supervisor.arm_drone()
+    supervisor.takeoff(target_altitude=5.0)
     supervisor.set_attitude()
     supervisor.run()
 

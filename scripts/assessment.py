@@ -154,8 +154,7 @@ class Visualiser(FlightEnvelopeAssessment):
         subAcceleration = rospy.Subscriber('mavros/imu/data', Imu, self.acceleration_callback)
         subRates = rospy.Subscriber('mavros/imu/data', Imu, self.rates_cb)
         subState = rospy.Subscriber('mavros/state', State, callback=self.state_cb)
-        subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
-        self.pub = rospy.Publisher('DataLogger', DataLogger, queue_size=10)
+        # subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
 
 
         sns.set_style('whitegrid')
@@ -207,16 +206,17 @@ class Visualiser(FlightEnvelopeAssessment):
     def state_cb(self, msg):
         self.current_state = msg
 
-    def data_logger_callback(self, msg):
-        self.cb_time = msg.time
-        self.cb_true_n = msg.true_n
-        self.cb_true_v = msg.true_velocity
-        self.cb_predict_n = msg.predicted_n
-        self.cb_predict_v = msg.predicted_velocity
-        self.cb_key_event = msg.key_event
-        self.cb_key_event_time = msg.key_event_time
+    # def data_logger_callback(self, msg):
+    #     self.cb_time = msg.time
+    #     self.cb_true_n = msg.true_n
+    #     self.cb_true_v = msg.true_velocity
+    #     self.cb_predict_n = msg.predicted_n
+    #     self.cb_predict_v = msg.predicted_velocity
+    #     self.cb_key_event = msg.key_event
+    #     self.cb_key_event_time = msg.key_event_time
 
     def data_logger_publisher(self):
+        self.pub = rospy.Publisher('DataLogger', DataLogger, queue_size=10)
         data_logger = DataLogger()
         data_logger.time = self.time_list[-1]
         data_logger.true_n = self.load_factor_list[-1]
