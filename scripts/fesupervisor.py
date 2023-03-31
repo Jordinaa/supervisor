@@ -19,7 +19,7 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import TwistStamped
 
 import config
-from helper import quaternionToEuler, eulerToQuaternion
+from helper import eulerToQuaternion
 from assessment import FlightEnvelopeAssessment
 from supervisor.msg import DataLogger
 
@@ -35,7 +35,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.mode = 'OFFBOARD'
         self.flag = False
         self.pitch_flag = False
-        self.command_pitch = 15
+        self.command_pitch = -90
         self.command_time = 0
         self.command_rate = 0
 
@@ -76,11 +76,11 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.cb_key_event_list = []
 
     def init_csv(self):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.csv_path = f"/home/taranto/catkin_ws/src/supervisor/data/drone_data_{timestamp}_{self.command_pitch}_{self.command_time}.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
-        self.csv_writer.writerow(["time", "n_true", "true_velocity", "predicted_n", "predicted_velocity", "bounds_crossed"])
+        self.csv_writer.writerow(["time", "true_velocity", "n_true", "predicted_velocity", "predicted_n", "bounds_crossed"])
 
     def close_csv(self):
         self.csv_file.close()
@@ -103,7 +103,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.cb_predict_v_list.append(self.cb_predict_v_sup)
         self.cb_key_event_list.append(self.num_lines_crossed)
 
-        self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_n_list[-1], self.cb_true_v_list[-1], self.cb_predict_n_list[-1], self.cb_predict_v_list[-1], self.num_lines_crossed])
+        self.csv_writer.writerow([self.cb_time_list[-1], self.cb_true_v_list[-1], self.cb_true_n_list[-1], self.cb_predict_v_list[-1], self.cb_predict_n_list[-1],  self.num_lines_crossed])
 
 #############################################
     def shutdown(self):
@@ -206,8 +206,8 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             self.supervisor_takeover()
 
     def execute_pitch_angle1(self, pitch_angle):
-        self.pitch = pitch_angle
         rospy.loginfo(f"Injecting pitch angle {pitch_angle}")
+        self.pitch = pitch_angle
         self.set_attitude()
 
     def supervisor_takeover(self):
@@ -290,12 +290,12 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
                 if self.num_lines_crossed >= 4:
                     self.pitch_flag = True
-                    rospy.logfatal(f"BOUNDS CROSSED (level {self.num_lines_crossed}): Critical")
+                    rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
                     while self.num_lines_crossed >= 4:
                         self.flag = True
                         self.set_attitude()
                         self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-                        # print(f'SUPERVISOR returning to steady level flight: {self.num_lines_crossed}')
+                        rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
 
             else:
                 self.flag = False
