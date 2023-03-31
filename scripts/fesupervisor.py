@@ -35,7 +35,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.mode = 'OFFBOARD'
         self.flag = False
         self.pitch_flag = False
-        self.command_pitch = -45
+        self.command_pitch = 15
         self.command_time = 0
         self.command_rate = 0
 
@@ -297,7 +297,6 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                         self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
                         # print(f'SUPERVISOR returning to steady level flight: {self.num_lines_crossed}')
 
-
             else:
                 self.flag = False
                 self.set_attitude()
@@ -305,45 +304,6 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
             last_req = rospy.Time.now()
             self.rate.sleep()
-
-    # def run(self):
-    #     last_req = rospy.Time.now()
-
-    #     while not rospy.is_shutdown():
-    #         current_state = self.current_state
-    #         if current_state.mode != self.mode and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-    #             self.set_mode()
-    #             last_req = rospy.Time.now()
-
-    #         if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-    #             self.arm_drone()
-    #             last_req = rospy.Time.now()
-
-    #         if current_state.mode == self.mode:
-
-    #             self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-
-    #             if self.num_lines_crossed > 0:
-    #                 if self.num_lines_crossed == 1:
-    #                     rospy.loginfo(f"Drone approaching flight envelope bound (level {self.num_lines_crossed}): Mild")
-    #                 elif self.num_lines_crossed == 2:
-    #                     rospy.logwarn(f"ALERT: Drone is approaching flight envelope bound (level {self.num_lines_crossed}): Moderate")
-    #                 elif self.num_lines_crossed == 3:
-    #                     rospy.logerr(f"CAUTION: Drone is breaching flight envelope bound (level {self.num_lines_crossed}): Severe")
-    #                 elif self.num_lines_crossed == 4 or self.num_lines_crossed == 5:
-    #                     rospy.logfatal(f"SUPERVISOR TAKNG OVER (level {self.num_lines_crossed}): Critical")
-    #                     while self.num_lines_crossed >= 4:
-    #                         self.flag = True
-    #                         self.set_attitude()
-    #                         self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)                        
-    #                         self.rate.sleep()
-    #             else:
-    #                 self.flag = False
-    #                 self.set_attitude()
-    #                 rospy.loginfo("Drone is within flight envelope")
-
-    #         last_req = rospy.Time.now()
-    #         self.rate.sleep()
 
 
 def sigint_handler(sig, frame):

@@ -251,10 +251,10 @@ class Visualiser(FlightEnvelopeAssessment):
 
     def predict_velocity(self):
         # change velocity weight to time horizon
-        if self.filteredAz == 0:
-            Ax = abs(self.filteredAx) # absolute value of self.filteredAx when self.filteredAz is 0
+        if self.filteredAx ** 2 - self.filteredAz ** 2 < 0:
+            Ax = 0.0 # Set Ax to 0 if the argument of np.sqrt() is negative
         else:
-            Ax = np.sqrt(self.filteredAx ** 2 - self.filteredAz ** 2)        
+            Ax = np.sqrt(self.filteredAx ** 2 - self.filteredAz ** 2)
         v_pred = self.velocity + Ax * self.velocity_weight
         self.cb_predict_v = v_pred
         self.velocity_prediction_list.append(v_pred)
