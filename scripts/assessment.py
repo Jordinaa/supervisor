@@ -333,7 +333,7 @@ if __name__ == "__main__":
     vis = Visualiser()
 
     while not rospy.is_shutdown():
-        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=200, blit=False)
+        ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=100, blit=False)
         plt.show(block=True)
         rate.sleep()
     plt.close('all')
