@@ -7,6 +7,7 @@ import numpy as np
 import csv
 import datetime
 
+import mavros
 import rospy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State, AttitudeTarget
@@ -17,6 +18,7 @@ from geometry_msgs.msg import Twist
 from mavros_msgs.msg import PositionTarget
 from std_msgs.msg import Header
 from geometry_msgs.msg import TwistStamped
+from mavros import param
 
 import config
 from helper import eulerToQuaternion
@@ -33,6 +35,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         super().__init__()
         self.rate = rospy.Rate(20)
         self.mode = 'OFFBOARD'
+        self.mission_mode = 'MISSION'
         self.flag = False
         self.pitch_flag = False
         self.command_pitch = 0.0
@@ -174,7 +177,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 #############################################
     def check_bounds(self, predicted_velocity, predicted_load_factor, velocities_lists, calc_load_factor_lists):
         num_lines_crossed = 0
-        print(f'Predicted velocity: {predicted_velocity:.4}, predicted load factor: {predicted_load_factor:.4}')
+        # print(f'Predicted velocity: {predicted_velocity:.4}, predicted load factor: {predicted_load_factor:.4}')
         for calc_load_factor_list in calc_load_factor_lists:
             closest_index = np.argmin(np.abs(np.array(velocities_lists) - predicted_velocity))
             closest_load_factor = calc_load_factor_list[closest_index]
@@ -262,6 +265,18 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         except rospy.ServiceException as e:
             rospy.logwarn(f"Service call failed: {e}")
 
+    def set_mission_mode(self):
+        offb_set_mode = SetModeRequest()
+        offb_set_mode.custom_mode = self.mission_mode
+        try:
+            rospy.wait_for_service('mavros/set_mode', timeout=5)
+            set_mode = rospy.ServiceProxy('mavros/set_mode', SetMode)
+            set_mode(offb_set_mode)
+            rospy.loginfo(f"{self.mission_mode} mode enabled")
+        except rospy.ServiceException as e:
+            rospy.logwarn(f"Service call failed: {e}")
+
+
     def arm_drone(self):
         arm_cmd = CommandBoolRequest()
         arm_cmd.value = True
@@ -270,38 +285,32 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
     def run(self):
         last_req = rospy.Time.now()
+        mavros.set_namespace()
 
         while not rospy.is_shutdown():
-            # current_state = self.current_state
-            # if current_state.mode != self.mode and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-            #     self.set_mode()
-            #     last_req = rospy.Time.now()
 
             # if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
             #     self.arm_drone()
             #     last_req = rospy.Time.now()
 
+            pti_get = param.param_get("FTI_ENABLE")
+            pti_set = param.param_set("FTI_ENABLE", 1)
+            # rate.sleep()
+            # rospy.loginfo(f"FTI_ENABLE: {pti_get}")
 
-            # if current_state.mode == self.mode:
-            # self.execute_pitch_angle(self.command_pitch, self.command_time)
             self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-            if self.pitch_flag == False:
-                # self.execute_pitch_angle(self.command_pitch, self.command_time)
-                self.execute_pitch_angle1(self.command_pitch)
-
+            
             if self.num_lines_crossed >= 4:
-                self.pitch_flag = True
                 rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
-                while self.num_lines_crossed >= 4:
-                    self.flag = True
-                    self.set_attitude()
-                    self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-                    rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
+                pti_set = param.param_set("FTI_ENABLE", 0)
+                print("FTI_DISABLE: ", {pti_set})
+                rate.sleep()
+                # self.set_mission_mode()
 
-            else:
-                self.flag = False
-                self.set_attitude()
-                rospy.loginfo("Drone is within flight envelope")
+            # else:
+                # self.flag = False
+                # self.set_attitude()
+                # rospy.loginfo("Drone is within flight envelope")
 
             last_req = rospy.Time.now()
             self.rate.sleep()
@@ -309,7 +318,9 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
 def sigint_handler(sig, frame):
     rospy.loginfo("Closing Supervisor")
-    supervisor.shutdown()
+    mavros.set_namespace()
+    pti_set = param.param_set("FTI_ENABLE", 0)
+    supervisor.set_mission_mode()
     supervisor.close_csv()
     rospy.sleep(1)
     sys.exit(0)
@@ -324,8 +335,8 @@ if __name__ == "__main__":
     supervisor = FlightEnvelopeSupervisor()
     
     supervisor.pre_bake_commands()
-    supervisor.set_mode()
+    supervisor.set_mission_mode()
     supervisor.arm_drone()
-    supervisor.set_attitude()
+    # supervisor.set_attitude()
     supervisor.run()
     supervisor.close_csv()

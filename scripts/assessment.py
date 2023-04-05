@@ -147,7 +147,7 @@ class Visualiser(FlightEnvelopeAssessment):
         self.load_factor_predict = 0.0
         self.previous_filtered_load_factor = None
         self.weight = .1
-        self.velocity_weight = 1.2
+        self.velocity_weight = 2.0
 
         subPosition = rospy.Subscriber('mavros/local_position/pose', PoseStamped, self.position_cb)
         subvfr_hud = rospy.Subscriber('mavros/vfr_hud', VFR_HUD, self.velocity_cb)
