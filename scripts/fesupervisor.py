@@ -35,7 +35,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.mode = 'OFFBOARD'
         self.flag = False
         self.pitch_flag = False
-        self.command_pitch = -90
+        self.command_pitch = 0.0
         self.command_time = 0
         self.command_rate = 0
 
@@ -272,30 +272,31 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         last_req = rospy.Time.now()
 
         while not rospy.is_shutdown():
-            current_state = self.current_state
-            if current_state.mode != self.mode and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-                self.set_mode()
-                last_req = rospy.Time.now()
+            # current_state = self.current_state
+            # if current_state.mode != self.mode and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
+            #     self.set_mode()
+            #     last_req = rospy.Time.now()
 
-            if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-                self.arm_drone()
-                last_req = rospy.Time.now()
+            # if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
+            #     self.arm_drone()
+            #     last_req = rospy.Time.now()
 
-            if current_state.mode == self.mode:
+
+            # if current_state.mode == self.mode:
+            # self.execute_pitch_angle(self.command_pitch, self.command_time)
+            self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
+            if self.pitch_flag == False:
                 # self.execute_pitch_angle(self.command_pitch, self.command_time)
-                self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-                if self.pitch_flag == False:
-                    # self.execute_pitch_angle(self.command_pitch, self.command_time)
-                    self.execute_pitch_angle1(self.command_pitch)
+                self.execute_pitch_angle1(self.command_pitch)
 
-                if self.num_lines_crossed >= 4:
-                    self.pitch_flag = True
+            if self.num_lines_crossed >= 4:
+                self.pitch_flag = True
+                rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
+                while self.num_lines_crossed >= 4:
+                    self.flag = True
+                    self.set_attitude()
+                    self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
                     rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
-                    while self.num_lines_crossed >= 4:
-                        self.flag = True
-                        self.set_attitude()
-                        self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-                        rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
 
             else:
                 self.flag = False
