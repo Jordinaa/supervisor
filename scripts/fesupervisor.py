@@ -266,12 +266,12 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
             rospy.logwarn(f"Service call failed: {e}")
 
     def set_mission_mode(self):
-        offb_set_mode = SetModeRequest()
-        offb_set_mode.custom_mode = self.mission_mode
+        mode = SetModeRequest()
+        mode.custom_mode = self.mission_mode
         try:
             rospy.wait_for_service('mavros/set_mode', timeout=5)
             set_mode = rospy.ServiceProxy('mavros/set_mode', SetMode)
-            set_mode(offb_set_mode)
+            set_mode(mode)
             rospy.loginfo(f"{self.mission_mode} mode enabled")
         except rospy.ServiceException as e:
             rospy.logwarn(f"Service call failed: {e}")
@@ -287,15 +287,18 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         last_req = rospy.Time.now()
         mavros.set_namespace()
 
+        pti_setting = param.param_get("FTI_FS_FRQ_RAMP")
+        pti_duration = param.param_get("FTI_FS_DURATION")
+        rospy.loginfo(f"FTI_CONTROL_SETTINGG: {pti_setting}")
+        rospy.loginfo(f"FTI_DURATION: {pti_duration}")
+
+
         while not rospy.is_shutdown():
-
-            # if not current_state.armed and (rospy.Time.now() - last_req) > rospy.Duration(5.0):
-            #     self.arm_drone()
-            #     last_req = rospy.Time.now()
-
+            
             pti_get = param.param_get("FTI_ENABLE")
             pti_set = param.param_set("FTI_ENABLE", 1)
-            # rate.sleep()
+            rate.sleep()
+
             # rospy.loginfo(f"FTI_ENABLE: {pti_get}")
 
             self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
@@ -305,12 +308,6 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
                 pti_set = param.param_set("FTI_ENABLE", 0)
                 print("FTI_DISABLE: ", {pti_set})
                 rate.sleep()
-                # self.set_mission_mode()
-
-            # else:
-                # self.flag = False
-                # self.set_attitude()
-                # rospy.loginfo("Drone is within flight envelope")
 
             last_req = rospy.Time.now()
             self.rate.sleep()

@@ -36,7 +36,7 @@ class FlightEnvelopeAssessment():
         self.g = config.G
 
         self.coefficient_lift = 0.0
-        self.dynamic_pressure = 0.01
+        self.dynamic_pressure = 0.00
         self.lift = 0.0
         self.velocity = 0.0
         self.load_factor = 0.0
@@ -49,7 +49,8 @@ class FlightEnvelopeAssessment():
         self.angleList = np.arange(0, self.alpha_stall, 0.01 * np.pi/180)
         self.coefficient_lift_list = [self.calc_cl(angle) for angle in self.angleList]
         self.clMax = max(self.coefficient_lift_list)
-        self.clMaxWeights = [.9, .8, .7, .6]
+        # self.clMaxWeights = [.9, .8, .7, .6]
+        self.clMaxWeights = [.9375, .8750, .8125, .750]
         self.vStall = self.calc_v_stall
         self.angleListDegrees = np.rad2deg(self.angleList)
 
