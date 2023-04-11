@@ -80,7 +80,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
     def init_csv(self):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.csv_path = f"/home/taranto/catkin_ws/src/supervisor/data/drone_data_{timestamp}_{self.command_pitch}_{self.command_time}.csv"
+        self.csv_path = f"/drone_data.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "true_velocity", "n_true", "predicted_velocity", "predicted_n", "bounds_crossed"])
@@ -294,15 +294,7 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
 
 
         while not rospy.is_shutdown():
-            
-            pti_get = param.param_get("FTI_ENABLE")
-            pti_set = param.param_set("FTI_ENABLE", 1)
-            rate.sleep()
-
-            # rospy.loginfo(f"FTI_ENABLE: {pti_get}")
-
             self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
-            
             if self.num_lines_crossed >= 4:
                 rospy.logfatal(f"BOUNDS CROSSED level of severity: {self.num_lines_crossed}")
                 pti_set = param.param_set("FTI_ENABLE", 0)

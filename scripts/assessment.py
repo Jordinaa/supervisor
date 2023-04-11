@@ -4,7 +4,7 @@ import time
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-import seaborn as sns
+# import seaborn as sns
 import numpy as np
 from scipy import signal
 
@@ -158,8 +158,8 @@ class Visualiser(FlightEnvelopeAssessment):
         # subDataLogger = rospy.Subscriber('DataLogger', DataLogger, callback=self.data_logger_callback)
 
 
-        sns.set_style('whitegrid')
-        sns.set_palette('colorblind')
+        # sns.set_style('whitegrid')
+        # sns.set_palette('colorblind')
         self.fig, (self.ax) = plt.subplots()
 
         self.colors = ['blue', 'red']
@@ -340,6 +340,6 @@ if __name__ == "__main__":
 
     while not rospy.is_shutdown():
         ani = FuncAnimation(vis.fig, vis.update_plot, init_func=vis.plot_init_vn, frames=1, interval=75, blit=False)
-        plt.show(block=True)
+        # plt.show(block=True)
         rate.sleep()
     plt.close('all')
