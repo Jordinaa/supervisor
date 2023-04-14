@@ -2,6 +2,7 @@
 
 import signal
 import sys
+import os
 import argparse
 import numpy as np
 import csv
@@ -79,8 +80,9 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         self.cb_key_event_list = []
 
     def init_csv(self):
+        print("Current working directory:", os.getcwd())
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.csv_path = f"/drone_data.csv"
+        self.csv_path = f"/home/taranto/catkin_ws/src/supervisor/data/drone_{timestamp}.csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(["time", "true_velocity", "n_true", "predicted_velocity", "predicted_n", "bounds_crossed"])
