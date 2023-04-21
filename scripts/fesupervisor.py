@@ -278,7 +278,6 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         except rospy.ServiceException as e:
             rospy.logwarn(f"Service call failed: {e}")
 
-
     def arm_drone(self):
         arm_cmd = CommandBoolRequest()
         arm_cmd.value = True
@@ -293,7 +292,6 @@ class FlightEnvelopeSupervisor(FlightEnvelopeAssessment):
         pti_duration = param.param_get("FTI_FS_DURATION")
         rospy.loginfo(f"FTI_CONTROL_SETTINGG: {pti_setting}")
         rospy.loginfo(f"FTI_DURATION: {pti_duration}")
-
 
         while not rospy.is_shutdown():
             self.num_lines_crossed = self.check_bounds(self.cb_predict_v_list[-1], self.cb_predict_n_list[-1], self.static_bounds_vel, self.static_bounds_n)
@@ -331,3 +329,4 @@ if __name__ == "__main__":
     # supervisor.set_attitude()
     supervisor.run()
     supervisor.close_csv()
+
